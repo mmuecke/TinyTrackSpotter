@@ -1,0 +1,13 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "msedge",
+            "request": "launch",
+            "name": "Web UI Edge",
+            "url": "http://localhost:9000",
+              "enableContentValidation": false,
+            "webRoot": "${workspaceFolder}/web/TinyTrackSpotterUI/src",
+        }
+    ]
+}
