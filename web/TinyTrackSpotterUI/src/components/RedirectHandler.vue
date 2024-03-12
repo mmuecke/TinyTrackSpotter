@@ -1,9 +1,8 @@
 <template>
-<div style="display: none;"></div>
+  <div style="display: none;"></div>
 </template>
 <script setup lang="ts">
 import { onMounted } from 'vue';
-import { useSpotifyClient } from 'src/composables/spotifyClient';
 import { useSpotifyStore } from 'src/stores/spotifyStore';
 import { useQuasar } from 'quasar';
 
@@ -17,14 +16,13 @@ onMounted(async () => {
   const store = useSpotifyStore();
   if (typeof code === 'string' && store.clientId && store.clientSecret) {
     try {
-      const tokens = await useSpotifyClient().fetchAccessToken(code, store.clientId, store.clientSecret);
-      store.setTokens(tokens);
+      await store.useClient().fetchAccessToken(code);
       $q.notify({
-          color: 'positive',
-          textColor: 'white',
-          icon: 'done',
-          message: 'redirectHandler.loginSuccess'
-        })
+        color: 'positive',
+        textColor: 'white',
+        icon: 'done',
+        message: 'redirectHandler.loginSuccess'
+      })
     }
     catch (error) {
       console.error(error);

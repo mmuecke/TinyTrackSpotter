@@ -55,6 +55,11 @@ module.exports = configure(function (/* ctx */) {
       },
 
       vueRouterMode: 'hash', // available values: 'hash', 'history'
+
+      // this is a configuration passed on to the underlying Webpack.
+      // No need to set this if you are using vite.
+      devtool: 'source-map',
+
       // vueRouterBase,
       // vueDevtools,
       // vueOptionsAPI: false,
@@ -112,9 +117,7 @@ module.exports = configure(function (/* ctx */) {
       // directives: [],
 
       // Quasar plugins
-      plugins: [
-        'Notify'
-      ],
+      plugins: ['Notify'],
     },
 
     // animations: 'all', // --- includes all animations

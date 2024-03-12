@@ -6,8 +6,21 @@
             "request": "launch",
             "name": "Web UI Edge",
             "url": "http://localhost:9000",
-              "enableContentValidation": false,
+            "enableContentValidation": false,
             "webRoot": "${workspaceFolder}/web/TinyTrackSpotterUI/src",
+        },
+        {
+            "type": "msedge",
+            "request": "launch",
+            "name": "Quasar App: msedge",
+            "url": "http://localhost:9000",
+            // To properly reflect changes after HMR with Vite
+            "enableContentValidation": false,
+            "webRoot": "${workspaceFolder}/web/TinyTrackSpotterUI/src",
+            // No need to configure sourcemap explicitly for vite.
+            "sourceMapPathOverrides": {
+                "webpack://package-name/./src/*": "${webRoot}/*"
+            }
         }
     ]
 }
