@@ -14,7 +14,7 @@ const spotifyEndpoints = {
   previous: 'https://api.spotify.com/v1/me/player/previous',
   player: 'https://api.spotify.com/v1/me/player',
   tracks: 'https://api.spotify.com/v1/playlists/{{PlaylistId}}/tracks',
-  currentlyPlaying: 'https://api.spotify.com/v1/me/player/currently-playing',
+  currentlyPlaying: 'https://api.spotify.com/v1/me/player/currently-playing?additional_types=episode',
   shuffle: 'https://api.spotify.com/v1/me/player/shuffle',
 } as const;
 

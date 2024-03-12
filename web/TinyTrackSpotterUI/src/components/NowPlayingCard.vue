@@ -3,12 +3,12 @@
     <q-card-section>
       <q-item>
         <q-item-section avatar>
-          <q-img :src="currentlyPlaying?.item?.album.images[0].url" />
+          <q-img :src="imageUrl" />
         </q-item-section>
         <q-item-section>
-          <q-item-label lines="1" caption>{{ currentlyPlaying?.item?.name }}</q-item-label>
-          <q-item-label lines="1" caption>{{ currentlyPlaying?.item?.artists.map(a => a.name).join(', ')
-            }}</q-item-label>
+          <q-item-label lines="1" caption>{{ name }}</q-item-label>
+          <q-item-label lines="1" caption>{{ subtitle }}</q-item-label>
+          <!-- <q-item-label lines="1" caption>{{ currentlyPlaying?.item?.description }}</q-item-label> -->
         </q-item-section>
       </q-item>
     </q-card-section>
@@ -56,7 +56,10 @@ const intervalT = 100
 const progress_ms = useObservable(fromRef(currentlyPlaying).pipe(
   switchMap((x) => x ? concat(of(x.progress_ms), interval(intervalT).pipe(map(y => x.progress_ms + y * intervalT))) : of(null)),
 ), { initialValue: null })
-const progress = computed(() => progress_ms.value && currentlyPlaying.value?.item.duration_ms ? progress_ms.value / currentlyPlaying.value?.item.duration_ms : 0);
+const imageUrl = computed(() => currentlyPlaying.value?.item?.album?.images[0]?.url ?? currentlyPlaying.value?.item?.images[0]?.url);
+const name = computed(() => currentlyPlaying.value?.item?.show?.name ?? currentlyPlaying.value?.item?.name);
+const subtitle = computed(() => currentlyPlaying.value?.item?.artists?.map(a => a.name).join(', ') ?? currentlyPlaying.value?.item?.name);
+const progress = computed(() => progress_ms.value && currentlyPlaying.value?.item?.duration_ms ? progress_ms.value / currentlyPlaying.value?.item.duration_ms : 0);
 // const { pause: pauseIntervall, resume: resumeIntervall, isActive: isActiveIntervall } = useIntervalFn(() => {
 //   progress_ms.value = progress_ms.value ? progress_ms.value + 100 : null;
 // }, 10000)
