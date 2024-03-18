@@ -3,11 +3,10 @@ import { defineStore } from 'pinia';
 import { useEspClient } from 'src/composables/espClient';
 import { computed } from 'vue';
 
-export const useEspStore = defineStore('sopitfy', () => {
-
+export const useEspStore = defineStore('espStore', () => {
   const client = useEspClient('http://spotifydisplay.local')
   const { isLoading: isLoadingClientId, state: clientId, isReady: isReadyClientId, execute: executeCientId } = useAsyncState(
-    async (args) => {
+    async () => {
       return await client.get('clientId')
     },
     {},
@@ -20,7 +19,7 @@ export const useEspStore = defineStore('sopitfy', () => {
     await client.set('clientId', clientId)
   }
   const { isLoading: isLoadingClientSecret, state: clientSecret, isReady: isReadyClientSecret, execute: executeClientSecret } = useAsyncState(
-    async (args) => {
+    async () => {
       return await client.get('clientSecret')
     },
     {},
@@ -29,9 +28,12 @@ export const useEspStore = defineStore('sopitfy', () => {
       resetOnExecute: false,
     },
   )
-  const { isLoading: isLoadingAccessToken, state: accessToken, isReady: isReadyAccessToken, execute: executeAccessToken } = useAsyncState(
-    async (args) => {
-      return await client.get('accessToken')
+  async function setClientSecret (clientId: string) {
+    await client.set('clientSecret', clientId)
+  }
+  const { isLoading: isLoadingRefreshToken, state: refreshToken, isReady: isReadyRefreshToken, execute: executeRefreshToken } = useAsyncState(
+    async () => {
+      return await client.get('refreshToken')
     },
     {},
     {
@@ -39,14 +41,17 @@ export const useEspStore = defineStore('sopitfy', () => {
       resetOnExecute: false,
     },
   )
-  const isLoading = computed(() => isLoadingClientId.value || isLoadingClientSecret.value || isLoadingAccessToken.value)
-  const isReady = computed(() => isReadyClientId.value && isReadyClientSecret.value && isReadyAccessToken.value)
+  async function setRefreshToken(clientId: string) {
+    await client.set('refreshToken', clientId)
+  }
+  const isLoading = computed(() => isLoadingClientId.value || isLoadingClientSecret.value || isLoadingRefreshToken.value)
+  const isReady = computed(() => isReadyClientId.value && isReadyClientSecret.value && isReadyRefreshToken.value)
   async function execute (delay?: number) {
-    // await executeCientId(delay)
-    // await executeClientSecret(delay)
-    // await executeAccessToken(delay)
+    await executeCientId(delay)
+    await executeClientSecret(delay)
+    await executeRefreshToken(delay)
   }
   return {
-    isLoading, clientId, clientSecret, accessToken, isReady, execute, setClientId: (x: string) => setClientId(x)
+    isLoading, clientId, clientSecret, refreshToken, isReady, execute, setClientId, setClientSecret, setRefreshToken
   }
 });

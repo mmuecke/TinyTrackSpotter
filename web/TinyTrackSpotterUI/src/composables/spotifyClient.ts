@@ -44,11 +44,12 @@ export const _scopes: Scope[] = [
   'playlist-read-private',
 ];
 
-export const tokens = zod.object({
+export const TokensSchema = zod.object({
   access_token: zod.string().min(1),
+  // only returnt on new token not on refresh
   refresh_token: zod.string().min(1),
 });
-export type Tokens = zod.infer<typeof tokens>;
+export type Tokens = zod.infer<typeof TokensSchema>;
 export class SpotifyClientError extends Error {
   constructor(message: string, public status: number) {
     super(message);
@@ -83,31 +84,33 @@ export const useSpotifyClient = (clientId: string, clientSecret: string, tokens:
       body += '&code=' + code;
       body += '&redirect_uri=' + encodeURI(window.location.origin);
       body += '&client_secret=' + clientSecret;
-      tokens.value = await callAuthorizationApi(body, clientId, clientSecret);
+      tokens.value = TokensSchema.parse(await callAuthorizationApi(body, clientId, clientSecret))
     },
     refreshAccessToken: async () => {
-      if (!tokens.value?.refresh_token) {
+      if (!tokens.value) {
         throw new Error('No refresh token');
       }
       let body = 'grant_type=refresh_token';
       body += '&refresh_token=' + tokens.value?.refresh_token;
-      tokens.value = await callAuthorizationApi(body, clientId, clientSecret);
+      tokens.value.access_token = (await callAuthorizationApi(body, clientId, clientSecret)).access_token;
     },
     getCurrentlyPlaying: async (): Promise<PlaybackState | null> => {
-      const response = await axios.get(spotifyEndpoints.currentlyPlaying, getAxiosConfig());
-      console.log('response', response);
-      if (response.status == 200) {
-        // return playbackStateSchema.parse(response.data);
-        return response.data;
+      try {
+        const response = await axios.get(spotifyEndpoints.currentlyPlaying, getAxiosConfig());
+
+        console.log('response', response);
+        if (response.status == 200) {
+          return response.data;
+        }
+      } catch (error) {
+          if (typeof error === 'object' && (error as {response?: {status?: number}})?.response?.status === 401) {
+            await useSpotifyClient(clientId, clientSecret, tokens).refreshAccessToken();
+            return null;
+          } else {
+            throw error;
+          }
       }
-      else if (response.status == 401 && tokens.value?.refresh_token) {
-        useSpotifyClient(clientId, clientSecret, tokens).refreshAccessToken();
-        return useSpotifyClient(clientId, clientSecret, tokens).getCurrentlyPlaying();
-      }
-      if (response.status == 204) {
-        return null;
-      }
-      throw new SpotifyClientError(response.statusText, response.status);
+      return null;
     },
     getDevices: async () => {
       const response = await axios.get(spotifyEndpoints.devices, getAxiosConfig());
@@ -139,6 +142,12 @@ export const useSpotifyClient = (clientId: string, clientSecret: string, tokens:
 }
 };
 
+export const authorizationResponse = zod.object({
+  access_token: zod.string().min(1),
+  // only returnt on new token not on refresh
+  refresh_token: zod.string().min(1).optional(),
+});
+
 async function callAuthorizationApi (body: string, clientId: string, clientSecret: string) {
   body += '&client_id=' + clientId;
   const response = await axios.post(spotifyEndpoints.token, body, {
@@ -150,7 +159,8 @@ async function callAuthorizationApi (body: string, clientId: string, clientSecre
 
   if(response.status == 200) {
     const data = response.data;
-    return tokens.parse(data);
+    TokensSchema
+    return authorizationResponse.parse(data);
   } else {
     throw new Error(response.statusText);
   }

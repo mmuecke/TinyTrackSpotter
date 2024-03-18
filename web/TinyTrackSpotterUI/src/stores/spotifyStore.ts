@@ -28,12 +28,6 @@ export const useSpotifyStore = defineStore('sopitfy', () => {
     _tokens.value = tokens;
   }
 
-  // function refreshAccessToken () {
-  //   if (_clientId.value && _clientSecret.value && _tokens.value?.refresh_token) {
-  //     useSpotifyClient(_clientId.value, _clientSecret.value, _tokens.value?.refresh_token).refreshAccessToken();
-  //   }
-  // }
-
   function useClient() {
     if (!_clientId.value || !_clientSecret.value) {
       throw new Error('Client not initialized');

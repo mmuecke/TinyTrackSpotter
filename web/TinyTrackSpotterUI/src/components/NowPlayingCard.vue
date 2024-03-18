@@ -54,7 +54,7 @@ const currentlyPlaying = useObservable(defer(() => fetchData()).pipe(
 ), { initialValue: null })
 const intervalT = 100
 const progress_ms = useObservable(fromRef(currentlyPlaying).pipe(
-  switchMap((x) => x ? concat(of(x.progress_ms), interval(intervalT).pipe(map(y => x.progress_ms + y * intervalT))) : of(null)),
+  switchMap((x) => x ? concat(of(x.progress_ms), interval(intervalT).pipe(map(y => x.is_playing ? (x.progress_ms + y * intervalT) : x.progress_ms))) : of(null)),
 ), { initialValue: null })
 const imageUrl = computed(() => currentlyPlaying.value?.item?.album?.images[0]?.url ?? currentlyPlaying.value?.item?.images[0]?.url);
 const name = computed(() => currentlyPlaying.value?.item?.show?.name ?? currentlyPlaying.value?.item?.name);

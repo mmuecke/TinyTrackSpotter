@@ -2,7 +2,7 @@
   <q-page class="row items-center justify-evenly">
     <div class="column">
       <credentials-form />
-      <PlaybackState />
+      <!-- <PlaybackState /> -->
       <SettingsCard />
       <redirect-handler />
     </div>
