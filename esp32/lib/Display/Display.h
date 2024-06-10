@@ -24,6 +24,7 @@ uint16_t displayText(
     uint16_t color = TFT_WHITE);
 void displayPrintLine(String text);
 void displayPrint(String text);
-// void displayJpg(String filename, int xpos, int ypos);
+void displayJpg(String filename, int xpos, int ypos, int scale = 1);
+void displayFillRect(int x, int y, int width, int height, uint16_t color);
 
 #endif

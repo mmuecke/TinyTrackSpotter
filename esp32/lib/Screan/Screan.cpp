@@ -24,19 +24,24 @@ void displayWifiState(boolean connected)
 }
 void displayNameLine1(String name)
 {
-    displayText(name, 220, 20, &FreeSans18pt7b, 306, background, color);
+    displayText(name, 190, 20, &FreeSans18pt7b, 336, background, color);
 }
 
 void displayNameLine2(String name)
 {
-    displayText(name, 220, 60, &FreeSans18pt7b, 306, background, color);
+    displayText(name, 190, 60, &FreeSans18pt7b, 336, background, color);
 }
 
 void displayNameLine3(String subtitle)
 {
-    displayText(subtitle, 220, 110, &FreeSans12pt7b, 306, background, color);
+    displayText(subtitle, 190, 110, &FreeSans12pt7b, 336, background, color);
 }
-
+void displayProgressBar(int x, int y, int width, int height, float progress, uint16_t barColor, uint16_t backgroundColor)
+{
+    int barWidth = map(progress * 100, 0, 100, 0, width);
+    displayFillRect(x + barWidth, y, width - barWidth, height, backgroundColor);
+    displayFillRect(x, y, barWidth, height, barColor);
+}
 void updateScrean()
 {
     if (!isInitialized)
@@ -48,6 +53,7 @@ void updateScrean()
         // displayNameLine3("Line 3 Text ......................");
         isInitialized = true;
     }
+
     if (hasWiFiStatusUpdate())
     {
         Serial.println("Update WiFiStatus:" + getWiFiStatus());
@@ -55,13 +61,15 @@ void updateScrean()
     }
     if (getHasData())
     {
-        if (hasImageUrlUpdate())
+        if (hasProgressUpdate())
         {
-            Serial.println("Update ImageUrl:" + getImageUrl());
-            // displayJpg("/cover.jpg", 10, 10);
+            float progres = getProgress();
+            Serial.println("Update Progress:" + String(progres));
+            displayProgressBar(20, 190, 496, 5, progres, primary, background);
         }
         if (hasNameUpdate())
         {
+            displayFillRect(20, 20, 150, 150, background);
             Serial.println("Update Name:" + getName());
             String name = getName();
             if (name.length() > 20)
@@ -73,12 +81,12 @@ void updateScrean()
                     breakPoint = 20;
 
                 displayNameLine1(name.substring(0, breakPoint));
-                displayNameLine2(name.substring(breakPoint, name.length()));
+                displayNameLine2(name.substring(breakPoint + 1, name.length()));
             }
             else
             {
-                displayNameLine1("");
-                displayNameLine2(name);
+                displayNameLine1(name);
+                displayNameLine2("");
             }
         }
         if (hasSubtitleUpdate())
@@ -86,13 +94,10 @@ void updateScrean()
             Serial.println("Update Subtitle:" + getSubtitle());
             displayNameLine3(getSubtitle());
         }
-        if (hasProgressUpdate())
+        if (hasImageUrlUpdate())
         {
-            Serial.println("Update Progress:" + String(getProgress()));
-        }
-        if (hasIsPlayingUpdate())
-        {
-            Serial.println("Update IsPlaying:" + getIsPlaing());
+            Serial.println("Update ImageUrl:" + getImageUrl());
+            displayJpg("/cover.jpg", 20, 20, 2);
         }
     }
 }

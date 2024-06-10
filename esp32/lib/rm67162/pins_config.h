@@ -1,6 +1,8 @@
-#pragma once
+#ifndef PINS_CONFIG_H
+#define PINS_CONFIG_H
 
 /***********************config*************************/
+#define USER_SETUP_LOADED
 #define LCD_USB_QSPI_DREVER 1
 
 #define SPI_FREQUENCY 75000000
@@ -54,3 +56,4 @@
 
 #define PIN_BUTTON_1 0
 #define PIN_BUTTON_2 21
+#endif // PINS_CONFIG_H

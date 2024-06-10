@@ -4,9 +4,16 @@
 #include <TFT_eSPI.h>
 #include <cmath>
 #include "LittleFS.h"
+// #include <TFT_eFEX.h>
+#include <TJpg_Decoder.h>
 
 TFT_eSPI tft = TFT_eSPI();
 
+bool pushImage(int16_t x, int16_t y, uint16_t w, uint16_t h, uint16_t *data)
+{
+    lcd_PushColors(x, y, w, h, data);
+    return true;
+}
 bool initDisplay()
 {
     Serial.println("Initializing display");
@@ -14,6 +21,10 @@ bool initDisplay()
     {
         rm67162_init(); // amoled lcd initialization
         lcd_setRotation(1);
+        // The jpeg image can be scaled by a factor of 1, 2, 4, or 8
+        TJpgDec.setSwapBytes(true); // Swap the byte order for pushImage() and pushPixels() functions
+        // The decoder must be given the exact name of the rendering function above
+        TJpgDec.setCallback(pushImage);
     }
     catch (const std::exception &e)
     {
@@ -32,6 +43,16 @@ void displayClear(uint16_t color)
     sprite.fillSprite(color);                                        // Fill the sprite with the specified color
     lcd_PushColors(0, 0, 536, 240, (uint16_t *)sprite.getPointer()); // Push the sprite to the display
     sprite.deleteSprite();                                           // Delete the sprite to free up memory
+}
+
+void displayFillRect(int x, int y, int width, int height, uint16_t color)
+{
+    TFT_eSprite sprite = TFT_eSprite(&tft);
+    sprite.setSwapBytes(1);
+    sprite.createSprite(width, height);
+    sprite.fillRect(0, 0, width, height, color);
+    lcd_PushColors(x, y, width, height, (uint16_t *)sprite.getPointer());
+    sprite.deleteSprite();
 }
 
 uint16_t displayText(String text, int x, int y, const GFXfont *font, int width, uint16_t background, uint16_t color)
@@ -64,10 +85,25 @@ uint16_t displayText(String text, int x, int y, const GFXfont *font, int width, 
     return textHeight;
 }
 
-// void displayJpg(const char *filename, int xpos, int ypos)
-// {
-//     sprite.drawJpgFile(LittleFS, filename, xpos, ypos);
-// }
+void displayJpg(String filename, int xpos, int ypos, int scale)
+{
+    TJpgDec.setJpgScale(scale);
+    Serial.println("!!!!!!!! Displaying jpg");
+    if (!LittleFS.begin())
+    {
+        Serial.println("Error mounting the file system");
+        return;
+    }
+    TJpgDec.drawFsJpg(xpos, ypos, filename, LittleFS);
+    // TFT_eSprite sprite = TFT_eSprite(&tft);
+    // sprite.drawJpgFile(LittleFS, filename, xpos, ypos);
+    // TFT_eFEX fex = TFT_eFEX(&tft);
+    // fex.setSwapBytes(1);
+    // fex.drawJpgFile(LittleFS, filename.c_str(), 0, 0);
+    // Serial.println(fex.getWriteError());
+    // lcd_PushColors(xpos, ypos, 300 + ypos, 300 + ypos, (uint16_t *)&fex);
+    Serial.println("!!!!!!!! Displayed jpg");
+}
 
 int printX = X_PADDING;
 int printY = Y_PADDING;
@@ -87,7 +123,7 @@ void displayPrintLine(String text)
 
 void displayPrint(String text)
 {
-    displayText(text, printX, printY, DEFAULT_FONT);
+    displayText(text.c_str(), printX, printY, DEFAULT_FONT);
     printX += text.length();
     Serial.print(text);
     Serial.print(printX);

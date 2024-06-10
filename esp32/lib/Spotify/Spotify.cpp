@@ -200,9 +200,9 @@ boolean getCurrentlyPlaying()
                 if (album.containsKey("images"))
                 {
                     JsonArray images = album["images"].as<JsonArray>();
-                    if (images.size() > 0)
+                    if (images.size() > 1)
                     {
-                        JsonObject image = images[0].as<JsonObject>();
+                        JsonObject image = images[1].as<JsonObject>();
                         if (image.containsKey("url"))
                         {
                             imageUrl = image["url"].as<String>();
@@ -213,9 +213,9 @@ boolean getCurrentlyPlaying()
             if (imageUrl == "" && item.containsKey("images"))
             {
                 JsonArray images = item["images"].as<JsonArray>();
-                if (images.size() > 0)
+                if (images.size() > 1)
                 {
-                    JsonObject image = images[0].as<JsonObject>();
+                    JsonObject image = images[1].as<JsonObject>();
                     if (image.containsKey("url"))
                     {
                         imageUrl = image["url"].as<String>();
@@ -284,12 +284,14 @@ boolean downloadImage()
             if (!LittleFS.begin())
             {
                 Serial.println("Error mounting the file system");
+                LittleFS.end();
                 return false;
             }
             File file = LittleFS.open("/cover.jpg", "w");
             if (!file)
             {
                 Serial.println("Failed to open file for writing");
+                LittleFS.end();
                 return false;
             }
             // Get the image data

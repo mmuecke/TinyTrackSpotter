@@ -64,6 +64,7 @@ bool SettingsEntry::writeValue()
     if (!LittleFS.begin())
     {
         Serial.println("Error mounting the file system");
+        LittleFS.end();
         return false;
     }
     if (LittleFS.exists(path))
@@ -72,6 +73,7 @@ bool SettingsEntry::writeValue()
         if (!removed)
         {
             Serial.println("Failed to remove file for writing: " + String(path));
+            LittleFS.end();
             return false;
         }
     }
@@ -79,6 +81,7 @@ bool SettingsEntry::writeValue()
     if (!file)
     {
         Serial.println("Failed to open file for writing: " + String(path));
+        LittleFS.end();
         return false;
     }
 
@@ -100,6 +103,7 @@ bool SettingsEntry::readValue()
     if (!LittleFS.begin())
     {
         Serial.println("Error mounting the file system");
+        LittleFS.end();
         return false;
     }
     if (!LittleFS.exists(path))
@@ -108,6 +112,7 @@ bool SettingsEntry::readValue()
         if (!file)
         {
             Serial.println("Failed to create file: " + String(path));
+            LittleFS.end();
             return false;
         }
         file.print(""); // Write a default value
@@ -117,6 +122,7 @@ bool SettingsEntry::readValue()
     if (!file)
     {
         Serial.println("Failed to open file for reading: " + String(path));
+        LittleFS.end();
         return false;
     }
 
