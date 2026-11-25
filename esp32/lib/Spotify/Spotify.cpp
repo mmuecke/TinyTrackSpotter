@@ -46,6 +46,7 @@ static const unsigned long authCheckIntervalMs = 10000;
 static bool refreshHadConnectionError = false;
 static bool refreshAccessToken();
 static SemaphoreHandle_t playbackMutex = nullptr;
+static QueueHandle_t spotifyCommandQueue = nullptr;
 static bool playbackWorkerStarted = false;
 static bool playbackWorkerStartAttempted = false;
 
@@ -694,10 +695,72 @@ static void updateCurrentPlayingStep()
     }
 }
 
+static void executeSpotifyControl(SpotifyControlCommand command)
+{
+    String endpoint;
+    String method;
+    const char *commandName;
+    if (command == SPOTIFY_CONTROL_NEXT)
+    {
+        endpoint = "https://api.spotify.com/v1/me/player/next";
+        method = "POST";
+        commandName = "skip to next";
+    }
+    else
+    {
+        lockPlaybackData();
+        bool currentlyPlaying = isPlaying;
+        unlockPlaybackData();
+        endpoint = currentlyPlaying ? "https://api.spotify.com/v1/me/player/pause"
+                                    : "https://api.spotify.com/v1/me/player/play";
+        method = "PUT";
+        commandName = currentlyPlaying ? "pause" : "resume";
+    }
+
+    Serial.printf("Spotify control: %s\n", commandName);
+    for (int attempt = 0; attempt < 2; ++attempt)
+    {
+        String accessToken = getSetting("accessToken", true);
+        HTTPClient http;
+        if (!http.begin(endpoint))
+        {
+            Serial.printf("ERROR: Could not start Spotify %s request\n", commandName);
+            return;
+        }
+        http.addHeader("Authorization", "Bearer " + accessToken);
+        int httpCode = http.sendRequest(method.c_str());
+        http.end();
+
+        if (httpCode == 204)
+        {
+            Serial.printf("Spotify control succeeded: %s\n", commandName);
+            spotifyState = UPDATE;
+            return;
+        }
+        if (httpCode == 401 && attempt == 0 && refreshAccessToken())
+            continue;
+
+        if (httpCode == 401)
+        {
+            spotifyAuthStatus = SPOTIFY_AUTH_REQUIRED;
+            authCheckRequested = false;
+        }
+        Serial.printf("ERROR: Spotify %s failed (HTTP %d)\n", commandName, httpCode);
+        if (httpCode == 403)
+            Serial.println("Playback control requires Spotify Premium and user-modify-playback-state authorization; reconnect Spotify if the scope was just added.");
+        else if (httpCode == 404)
+            Serial.println("Spotify has no active playback device for this command.");
+        return;
+    }
+}
+
 static void spotifyPlaybackWorker(void *)
 {
     for (;;)
     {
+        SpotifyControlCommand command;
+        if (spotifyCommandQueue && xQueueReceive(spotifyCommandQueue, &command, 0) == pdTRUE)
+            executeSpotifyControl(command);
         updateCurrentPlayingStep();
         vTaskDelay(pdMS_TO_TICKS(10));
     }
@@ -718,13 +781,32 @@ void updateCurrentPlaying()
         return;
     }
 
+    spotifyCommandQueue = xQueueCreate(4, sizeof(SpotifyControlCommand));
+    if (!spotifyCommandQueue)
+    {
+        Serial.println("ERROR: Could not create Spotify control command queue");
+        vSemaphoreDelete(playbackMutex);
+        playbackMutex = nullptr;
+        return;
+    }
+
     if (xTaskCreatePinnedToCore(spotifyPlaybackWorker, "spotify-playback", 8192,
                                 nullptr, 1, nullptr, 0) != pdPASS)
     {
         Serial.println("ERROR: Could not start Spotify playback worker");
+        vQueueDelete(spotifyCommandQueue);
+        spotifyCommandQueue = nullptr;
         vSemaphoreDelete(playbackMutex);
         playbackMutex = nullptr;
         return;
     }
     playbackWorkerStarted = true;
+}
+
+void requestSpotifyControl(SpotifyControlCommand command)
+{
+    if (spotifyAuthStatus != SPOTIFY_AUTH_CONNECTED || !spotifyCommandQueue)
+        return;
+    if (xQueueSend(spotifyCommandQueue, &command, 0) != pdTRUE)
+        Serial.println("ERROR: Spotify control queue is full; button command was ignored");
 }

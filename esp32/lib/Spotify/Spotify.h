@@ -30,6 +30,12 @@ enum SpotifyArtworkStatus
     ARTWORK_ERROR
 };
 
+enum SpotifyControlCommand
+{
+    SPOTIFY_CONTROL_NEXT,
+    SPOTIFY_CONTROL_TOGGLE_PLAYBACK
+};
+
 SpotifyAuthStatus getSpotifyAuthStatus();
 const char *getSpotifyAuthStatusName();
 void checkSpotifyAuthentication();
@@ -56,4 +62,5 @@ boolean hasIsPlayingUpdate();
 boolean getIsPlaing();
 
 void updateCurrentPlaying();
+void requestSpotifyControl(SpotifyControlCommand command);
 #endif

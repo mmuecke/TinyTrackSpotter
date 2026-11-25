@@ -286,6 +286,7 @@ static void updateArtwork(const String &url, SpotifyPlaybackStatus status)
 
 static void drawPlaybackIndicator(bool isPlaying)
 {
+    displayFillRect(18, 213, 20, 19, background);
     uint16_t iconColor = isPlaying ? primary : warning;
     if (isPlaying)
     {
@@ -445,7 +446,10 @@ void updateScrean()
     float progress = getProgress();
     bool isPlaying = getIsPlaing();
 
-    bool screenModeChanged = !playbackScreenDrawn || status != drawnPlaybackStatus;
+    bool hasPlayback = status == PLAYBACK_PLAYING || status == PLAYBACK_PAUSED;
+    bool drawnHasPlayback = drawnPlaybackStatus == PLAYBACK_PLAYING || drawnPlaybackStatus == PLAYBACK_PAUSED;
+    bool screenModeChanged = !playbackScreenDrawn || hasPlayback != drawnHasPlayback ||
+                             (!hasPlayback && status != drawnPlaybackStatus);
     if (screenModeChanged)
     {
         drawnBarFillPixels = -1;
@@ -458,7 +462,7 @@ void updateScrean()
         drawnIsPlaying = isPlaying;
     }
 
-    bool hasPlayback = status == PLAYBACK_PLAYING || status == PLAYBACK_PAUSED;
+    drawnPlaybackStatus = status;
     if (hasPlayback && (title != drawnTitle || subtitle != drawnSubtitle))
         drawArtworkText(title, subtitle);
     updateArtwork(artworkUrl, status);

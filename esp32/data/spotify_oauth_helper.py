@@ -16,7 +16,7 @@ from urllib.request import Request, urlopen
 
 
 REDIRECT_URI = "http://127.0.0.1:8888/callback"
-SCOPES = "user-read-currently-playing user-read-playback-state"
+SCOPES = "user-read-currently-playing user-read-playback-state user-modify-playback-state"
 HEALTH_GIF = b64decode("R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=")
 DEVICE_ASSETS = {
     "/style.css": "text/css; charset=utf-8",
