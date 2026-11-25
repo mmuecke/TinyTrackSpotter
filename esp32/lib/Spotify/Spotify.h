@@ -13,11 +13,21 @@ enum SpotifyAuthStatus
     SPOTIFY_AUTH_CONNECTION_ERROR
 };
 
+enum SpotifyPlaybackStatus
+{
+    PLAYBACK_LOADING,
+    PLAYBACK_PLAYING,
+    PLAYBACK_PAUSED,
+    PLAYBACK_NOTHING,
+    PLAYBACK_ERROR
+};
+
 SpotifyAuthStatus getSpotifyAuthStatus();
 const char *getSpotifyAuthStatusName();
 void checkSpotifyAuthentication();
 void updateSpotifyAuthentication();
 void spotifyAuthSettingsChanged();
+SpotifyPlaybackStatus getPlaybackStatus();
 
 boolean getHasData();
 

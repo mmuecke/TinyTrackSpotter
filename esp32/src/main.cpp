@@ -91,16 +91,17 @@ void loop()
 {
   updateWiFi();
   updateSpotifyAuthentication();
+  updateCurrentPlaying();
   SpotifyAuthStatus authStatus = getSpotifyAuthStatus();
   if (authStatus != lastDisplayedAuthStatus)
   {
     lastDisplayedAuthStatus = authStatus;
     displaySpotifyAuthStatus(authStatus);
   }
+  if (authStatus == SPOTIFY_AUTH_CONNECTED)
+    updateScrean();
   // if (hasWiFiStatusUpdate() && getWiFiStatus())
   // {
   //   displayPrintLine(String(MDNS_NAME) + ".local");
   // }
-  // updateCurrentPlaying();
-  // updateScrean();
 }
