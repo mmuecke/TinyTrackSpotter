@@ -34,6 +34,28 @@ static bool captureCoverBlock(int16_t x, int16_t y, uint16_t w, uint16_t h, uint
     return true;
 }
 
+static void scaleCoverBufferToTile()
+{
+    uint16_t sourceWidth = coverWidth;
+    uint16_t sourceHeight = coverHeight;
+    if (sourceWidth == 0 || sourceHeight == 0)
+        return;
+
+    // Upscale in place from bottom-right to top-left so source pixels are read
+    // before an expanded destination can overwrite them.
+    for (int y = COVER_SIZE - 1; y >= 0; --y)
+    {
+        uint16_t sourceY = (uint32_t)y * sourceHeight / COVER_SIZE;
+        for (int x = COVER_SIZE - 1; x >= 0; --x)
+        {
+            uint16_t sourceX = (uint32_t)x * sourceWidth / COVER_SIZE;
+            coverPixels[y * COVER_SIZE + x] = coverPixels[sourceY * sourceWidth + sourceX];
+        }
+    }
+    coverWidth = COVER_SIZE;
+    coverHeight = COVER_SIZE;
+}
+
 static void coverDecodeTask(void *)
 {
     bool ok = false;
@@ -76,6 +98,8 @@ static void coverDecodeTask(void *)
                             errorReason = "JPEG decode failed";
                         else if (coverDecodeBoundsError)
                             errorReason = "resized JPEG exceeded cover bounds";
+                        else
+                            scaleCoverBufferToTile();
                     }
                     else
                         errorReason = "required JPEG resize scale exceeds 8";
@@ -226,8 +250,6 @@ DisplayJpgTaskResult displayProcessCoverDecode()
         }
         int centeredX = coverX + (COVER_SIZE - coverWidth) / 2;
         int centeredY = coverY + (COVER_SIZE - coverHeight) / 2;
-        const uint16_t artworkBackground = ((28 & 0xF8) << 8) | ((40 & 0xFC) << 3) | (32 >> 3);
-        displayFillRect(coverX, coverY, COVER_SIZE, COVER_SIZE, artworkBackground);
         for (uint16_t row = 0; row < coverHeight; ++row)
             lcd_PushColors(centeredX, centeredY + row, coverWidth, 1,
                            coverPixels + row * coverWidth);
