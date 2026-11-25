@@ -214,7 +214,7 @@ static void updateArtwork(const String &url, SpotifyPlaybackStatus status)
     {
         failedArtworkUrl = queuedArtworkUrl;
         queuedArtworkUrl = "";
-        Serial.printf("Cover decode failed: '%s'\n", failedArtworkUrl.c_str());
+        Serial.printf("ERROR: Cover resize/decode failed for image URL: %s\n", failedArtworkUrl.c_str());
         if (failedArtworkUrl == url)
             drawArtworkPlaceholder("", ARTWORK_ICON_RESIZE_ERROR);
     }

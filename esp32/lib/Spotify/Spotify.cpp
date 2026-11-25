@@ -209,6 +209,40 @@ boolean getIsPlaing()
     return isPlaying;
 }
 
+static String selectArtworkUrl(JsonArray images)
+{
+    String fallbackUrl;
+    String closestCoverUrl;
+    int closestCoverWidth = 32767;
+    int largestWidth = -1;
+    String largestUrl;
+
+    for (JsonVariant image : images)
+    {
+        String url = image["url"].as<String>();
+        if (url.length() == 0)
+            continue;
+        if (fallbackUrl.length() == 0)
+            fallbackUrl = url;
+
+        int width = image["width"].as<int>();
+        if (width > largestWidth)
+        {
+            largestWidth = width;
+            largestUrl = url;
+        }
+        if (width >= 160 && width < closestCoverWidth)
+        {
+            closestCoverWidth = width;
+            closestCoverUrl = url;
+        }
+    }
+
+    if (closestCoverUrl.length() > 0)
+        return closestCoverUrl;
+    return largestUrl.length() > 0 ? largestUrl : fallbackUrl;
+}
+
 boolean getCurrentlyPlaying()
 {
     String accessToken = getSetting("accessToken", true);
@@ -334,14 +368,12 @@ boolean getCurrentlyPlaying()
     {
         JsonObject album = item["album"].as<JsonObject>();
         JsonArray images = album["images"].as<JsonArray>();
-        if (images.size() > 0)
-            artworkUrl = images[0]["url"].as<String>();
+        artworkUrl = selectArtworkUrl(images);
     }
     if (artworkUrl.length() == 0)
     {
         JsonArray images = item["images"].as<JsonArray>();
-        if (images.size() > 0)
-            artworkUrl = images[0]["url"].as<String>();
+        artworkUrl = selectArtworkUrl(images);
     }
 
     if (artworkUrl != imageUrl)
