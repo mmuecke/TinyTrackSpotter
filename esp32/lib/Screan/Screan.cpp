@@ -16,10 +16,10 @@ static String drawnSubtitle = "";
 static String drawnArtworkUrl = "";
 static String queuedArtworkUrl = "";
 static String failedArtworkUrl = "";
-static float drawnProgress = -1;
 static SpotifyPlaybackStatus drawnPlaybackStatus = PLAYBACK_LOADING;
 static bool drawnIsPlaying = false;
 static const int progressBarWidth = 474;
+static int drawnBarFillPixels = -1;
 
 static int progressPixelWidth(float progress)
 {
@@ -261,12 +261,8 @@ static void updateArtwork(const String &url, SpotifyPlaybackStatus status)
     }
 }
 
-static void drawProgress(float progress, bool isPlaying)
+static void drawPlaybackIndicator(bool isPlaying)
 {
-    if (progress < 0)
-        progress = 0;
-    if (progress > 1)
-        progress = 1;
     uint16_t iconColor = isPlaying ? primary : warning;
     if (isPlaying)
     {
@@ -285,13 +281,37 @@ static void drawProgress(float progress, bool isPlaying)
         displayFillRect(27, 215, 4, 15, iconColor);
     }
 
+}
+
+static void drawProgressBar(float progress)
+{
     const int barX = 44;
     const int barY = 220;
     const int barWidth = progressBarWidth;
     int filledWidth = progressPixelWidth(progress);
-    displayFillRect(barX, barY, barWidth, 6, artworkBackground);
-    if (filledWidth > 0)
-        displayFillRect(barX, barY, filledWidth, 6, primary);
+    if (drawnBarFillPixels < 0)
+    {
+        displayFillRect(barX, barY, barWidth, 6, artworkBackground);
+        if (filledWidth > 0)
+            displayFillRect(barX, barY, filledWidth, 6, primary);
+    }
+    else if (filledWidth > drawnBarFillPixels)
+    {
+        displayFillRect(barX + drawnBarFillPixels, barY,
+                        filledWidth - drawnBarFillPixels, 6, primary);
+    }
+    else if (filledWidth < drawnBarFillPixels)
+    {
+        displayFillRect(barX + filledWidth, barY,
+                        drawnBarFillPixels - filledWidth, 6, artworkBackground);
+    }
+    drawnBarFillPixels = filledWidth;
+}
+
+static void drawProgress(float progress, bool isPlaying)
+{
+    drawPlaybackIndicator(isPlaying);
+    drawProgressBar(progress);
 }
 
 static void drawPlaybackScreen(SpotifyPlaybackStatus status, const String &title,
@@ -405,6 +425,7 @@ void updateScrean()
     bool screenModeChanged = !playbackScreenDrawn || status != drawnPlaybackStatus;
     if (screenModeChanged)
     {
+        drawnBarFillPixels = -1;
         drawPlaybackScreen(status, title, subtitle, artworkUrl, progress, isPlaying);
         playbackScreenDrawn = true;
         drawnPlaybackStatus = status;
@@ -412,7 +433,6 @@ void updateScrean()
         drawnSubtitle = subtitle;
         drawnArtworkUrl = "";
         drawnIsPlaying = isPlaying;
-        drawnProgress = progress;
     }
 
     bool hasPlayback = status == PLAYBACK_PLAYING || status == PLAYBACK_PAUSED;
@@ -426,14 +446,9 @@ void updateScrean()
 
     if (isPlaying != drawnIsPlaying)
     {
-        drawProgress(progress, isPlaying);
+        drawPlaybackIndicator(isPlaying);
         drawnIsPlaying = isPlaying;
-        drawnProgress = progress;
     }
 
-    if (progressPixelWidth(progress) != progressPixelWidth(drawnProgress))
-    {
-        drawProgress(progress, isPlaying);
-        drawnProgress = progress;
-    }
+    drawProgressBar(progress);
 }
