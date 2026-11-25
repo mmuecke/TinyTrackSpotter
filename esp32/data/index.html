@@ -1,47 +1,53 @@
-﻿<!doctype html>
+<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>TinyTrackSpotter setup</title>
-  <style>
-    :root { color-scheme: dark; font: 16px/1.5 system-ui, sans-serif; background: #101613; color: #f1f5f2; }
-    * { box-sizing: border-box; }
-    body { margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 24px; }
-    main { width: min(100%, 440px); padding: 28px; border: 1px solid #35443b; border-radius: 16px; background: #19221c; }
-    h1 { margin: 0 0 8px; font-size: 1.6rem; }
-    p { color: #bfcbc2; margin: 8px 0 18px; }
-    label { display: block; margin: 14px 0 5px; font-size: .9rem; }
-    input { width: 100%; padding: 11px 12px; border: 1px solid #526157; border-radius: 8px; color: inherit; background: #101613; }
-    button { width: 100%; margin-top: 20px; padding: 12px; border: 0; border-radius: 8px; color: #102016; background: #1ed760; font-weight: 700; cursor: pointer; }
-    button:disabled { opacity: .55; cursor: wait; }
-    #status { padding: 10px 12px; border-radius: 8px; background: #26352b; color: #d9e5dc; }
-    #message { min-height: 1.5em; margin-bottom: 0; }
-    .hint { margin-top: 18px; font-size: .85rem; }
-    a { color: #1ed760; }
-  </style>
+  <link rel="icon" href="/favicon.ico" sizes="any">
+  <link rel="icon" type="image/png" sizes="16x16" href="/icons/favicon-16x16.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32x32.png">
+  <link rel="icon" type="image/png" sizes="96x96" href="/icons/favicon-96x96.png">
+  <link rel="icon" type="image/png" sizes="128x128" href="/icons/favicon-128x128.png">
+  <link rel="stylesheet" href="/style.css">
 </head>
-<body>
-  <main>
-    <h1>TinyTrackSpotter</h1>
-    <p>Connect Spotify to let the display read your current playback.</p>
-    <div id="status" role="status">Checking Spotify connection…</div>
+<body class="setup-page">
+  <main class="setup-card">
+    <div class="brand"><img class="brand-icon" src="/icons/favicon-32x32.png" alt="">TinyTrackSpotter</div>
+    <div class="eyebrow">Device setup</div>
+    <h1>Connect Spotify</h1>
+    <p class="intro">Connect your Spotify account so the display can show your current playback.</p>
+
+    <div id="status" class="status" data-state="checking" role="status">
+      <span class="status-dot" aria-hidden="true"></span><span id="status-text">Checking Spotify connection...</span>
+    </div>
+    <div id="helper-status" class="status" data-state="checking" role="status">
+      <span class="status-dot" aria-hidden="true"></span><span id="helper-status-text">Checking for the local OAuth helper...</span>
+    </div>
+
     <label for="clientId">Spotify Client ID</label>
     <input id="clientId" autocomplete="off" spellcheck="false">
     <label for="clientSecret">Spotify Client Secret</label>
     <input id="clientSecret" autocomplete="off" spellcheck="false">
-    <button id="connect">Save and connect Spotify</button>
-    <p id="message" role="status"></p>
-    <p class="hint">Create your Spotify app and find the Client ID and Client Secret in the <a href="https://developer.spotify.com/dashboard" target="_blank" rel="noopener">Spotify Developer Dashboard</a>.</p>
-    <p class="hint">Download the <a href="/spotify_oauth_helper.py" download="spotify_oauth_helper.py">local OAuth helper</a> and run <code>python spotify_oauth_helper.py</code> on this computer. Register <code>http://127.0.0.1:8888/callback</code> as the app redirect URI.</p>
+    <button id="connect" class="primary-button">Save and connect Spotify</button>
+    <p id="message" class="hint" role="status"></p>
+
+    <p class="hint">Create your Spotify app and find these values in the <a href="https://developer.spotify.com/dashboard" target="_blank" rel="noopener">Spotify Developer Dashboard</a>.</p>
+    <p class="hint">Download and run the <a href="/spotify_oauth_helper.py" download="spotify_oauth_helper.py">local OAuth helper</a> on this computer. The page checks automatically when it is ready.</p>
+    <p class="hint">Register <code>http://127.0.0.1:8888/callback</code> as the redirect URI in your Spotify app.</p>
   </main>
   <script>
     const statusNode = document.querySelector('#status');
+    const statusText = document.querySelector('#status-text');
+    const helperStatus = document.querySelector('#helper-status');
+    const helperStatusText = document.querySelector('#helper-status-text');
     const messageNode = document.querySelector('#message');
     const button = document.querySelector('#connect');
     const clientIdInput = document.querySelector('#clientId');
     const clientSecretInput = document.querySelector('#clientSecret');
     let deviceIp = '';
+    let helperReachable = false;
+    let helperCheckInFlight = false;
 
     async function getSetting(key) {
       const response = await fetch(`/settings?${encodeURIComponent(key)}`);
@@ -66,10 +72,34 @@
           connected: 'Spotify connected',
           connection_error: 'Could not reach Spotify; retrying connection check',
         };
-        statusNode.textContent = labels[result.status] || 'Spotify status unavailable';
+        statusText.textContent = labels[result.status] || 'Spotify status unavailable';
+        statusNode.dataset.state = result.status === 'connected' ? 'connected' : result.status;
       } catch (_) {
-        statusNode.textContent = 'Could not read device status';
+        statusText.textContent = 'Could not read device status';
+        statusNode.dataset.state = 'error';
       }
+    }
+
+    function checkHelper() {
+      if (helperCheckInFlight) return;
+      helperCheckInFlight = true;
+      let completed = false;
+      const finish = (reachable) => {
+        if (completed) return;
+        completed = true;
+        clearTimeout(timeout);
+        helperCheckInFlight = false;
+        helperReachable = reachable;
+        helperStatus.dataset.state = reachable ? 'ready' : 'offline';
+        helperStatusText.textContent = reachable
+          ? 'Local OAuth helper is running and ready.'
+          : 'OAuth helper is not running. Download it and start it on this computer.';
+      };
+      const probe = new Image();
+      const timeout = setTimeout(() => finish(false), 2500);
+      probe.onload = () => finish(true);
+      probe.onerror = () => finish(false);
+      probe.src = `http://127.0.0.1:8888/health.png?check=${Date.now()}`;
     }
 
     async function loadSettings() {
@@ -95,10 +125,11 @@
         const status = await statusResponse.json();
         deviceIp = status.device_ip || deviceIp;
         if (!deviceIp) throw new Error('The device has no Wi-Fi IP address yet.');
+        if (!helperReachable) checkHelper();
         const helperUrl = new URL('http://127.0.0.1:8888/login');
         helperUrl.searchParams.set('esp', `http://${deviceIp}`);
         window.open(helperUrl, '_blank', 'noopener');
-        messageNode.textContent = 'Complete Spotify approval in the opened tab. This page will update when the device connects.';
+        messageNode.textContent = 'The helper will wait for the device, then open Spotify automatically.';
       } catch (error) {
         messageNode.textContent = error.message;
       } finally {
@@ -108,7 +139,9 @@
 
     loadSettings();
     refreshStatus();
+    checkHelper();
     setInterval(refreshStatus, 3000);
+    setInterval(checkHelper, 3000);
   </script>
 </body>
 </html>

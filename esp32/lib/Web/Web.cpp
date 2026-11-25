@@ -95,6 +95,18 @@ bool initWebServer()
               { sendStaticFile(request, "/index.html", "text/html"); });
     server.on("/index.html", HTTP_GET, [](AsyncWebServerRequest *request)
               { sendStaticFile(request, "/index.html", "text/html"); });
+    server.on("/style.css", HTTP_GET, [](AsyncWebServerRequest *request)
+              { sendStaticFile(request, "/style.css", "text/css"); });
+    server.on("/favicon.ico", HTTP_GET, [](AsyncWebServerRequest *request)
+              { sendStaticFile(request, "/favicon.ico", "image/x-icon"); });
+    server.on("/icons/favicon-16x16.png", HTTP_GET, [](AsyncWebServerRequest *request)
+              { sendStaticFile(request, "/icons/favicon-16x16.png", "image/png"); });
+    server.on("/icons/favicon-32x32.png", HTTP_GET, [](AsyncWebServerRequest *request)
+              { sendStaticFile(request, "/icons/favicon-32x32.png", "image/png"); });
+    server.on("/icons/favicon-96x96.png", HTTP_GET, [](AsyncWebServerRequest *request)
+              { sendStaticFile(request, "/icons/favicon-96x96.png", "image/png"); });
+    server.on("/icons/favicon-128x128.png", HTTP_GET, [](AsyncWebServerRequest *request)
+              { sendStaticFile(request, "/icons/favicon-128x128.png", "image/png"); });
     server.on("/spotify_oauth_helper.py", HTTP_GET, [](AsyncWebServerRequest *request)
               { sendStaticFile(request, "/spotify_oauth_helper.py", "application/octet-stream", true); });
 

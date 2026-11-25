@@ -4,7 +4,7 @@ Run this on the computer whose browser will approve Spotify access. The helper
 binds only to IPv4 loopback and forwards the resulting refresh token to the ESP.
 """
 
-from base64 import b64encode
+from base64 import b64decode, b64encode
 from html import escape
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
@@ -17,6 +17,15 @@ from urllib.request import Request, urlopen
 
 REDIRECT_URI = "http://127.0.0.1:8888/callback"
 SCOPES = "user-read-currently-playing user-read-playback-state"
+HEALTH_GIF = b64decode("R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=")
+DEVICE_ASSETS = {
+    "/style.css": "text/css; charset=utf-8",
+    "/favicon.ico": "image/x-icon",
+    "/icons/favicon-16x16.png": "image/png",
+    "/icons/favicon-32x32.png": "image/png",
+    "/icons/favicon-96x96.png": "image/png",
+    "/icons/favicon-128x128.png": "image/png",
+}
 
 
 def esp_request(base_url, path, method="GET", timeout=12):
@@ -76,35 +85,51 @@ class Handler(BaseHTTPRequestHandler):
             return
         print("OAuth helper request received")
 
+    def send_device_asset(self, path):
+        esp_url = getattr(self.server, "esp_url", "")
+        if not esp_url:
+            self.send_error(503, "Device address is not available yet")
+            return
+        try:
+            asset_request = Request(esp_url.rstrip("/") + path)
+            with urlopen(asset_request, timeout=4) as response:
+                content = response.read()
+            self.send_response(200)
+            self.send_header("Content-Type", DEVICE_ASSETS[path])
+            self.send_header("Content-Length", str(len(content)))
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            self.wfile.write(content)
+        except (HTTPError, URLError, TimeoutError, OSError):
+            self.send_error(503, "Device asset is temporarily unavailable")
+
     def send_loading_page(self, flow_id):
         device_url = escape(getattr(self.server, "esp_url", ""), quote=True)
         body = ("<!doctype html><html lang='en'><head><meta charset='utf-8'>"
                 "<meta name='viewport' content='width=device-width,initial-scale=1'>"
                 "<meta name='color-scheme' content='dark'><title>Connecting device | TinyTrackSpotter</title>"
-                "<style>*{box-sizing:border-box}body{margin:0;min-height:100vh;padding:24px;display:grid;"
-                "place-items:center;background:radial-gradient(ellipse at 50% 0%,#203c2b 0,#111714 58%);"
-                "color:#f3f7f4;font:16px/1.55 system-ui,-apple-system,Segoe UI,sans-serif}"
-                ".card{width:min(100%,480px);padding:36px;border:1px solid #34483a;border-radius:22px;"
-                "background:rgba(23,32,26,.96);box-shadow:0 24px 80px #0008}"
-                ".brand{display:flex;align-items:center;gap:10px;color:#b9c8bd;font-size:13px;"
-                "font-weight:700;letter-spacing:.12em;text-transform:uppercase}.mark{width:32px;height:32px;"
-                "display:grid;place-items:center;border-radius:50%;background:#1ed760;color:#102016;font-size:17px}"
-                ".eyebrow{margin:32px 0 8px;color:#1ed760;font-size:12px;font-weight:700;"
-                "letter-spacing:.14em;text-transform:uppercase}h1{margin:0;font-size:clamp(27px,6vw,38px);"
-                "line-height:1.12;letter-spacing:-.035em}p{margin:16px 0 0;color:#bdc9c0}.activity{display:flex;"
-                "align-items:center;gap:14px;margin-top:26px;color:#dce8df}.spinner{width:24px;height:24px;"
+                "<link rel='icon' href='/favicon.ico' sizes='any'>"
+                "<link rel='icon' type='image/png' sizes='16x16' href='/icons/favicon-16x16.png'>"
+                "<link rel='icon' type='image/png' sizes='32x32' href='/icons/favicon-32x32.png'>"
+                "<link rel='icon' type='image/png' sizes='96x96' href='/icons/favicon-96x96.png'>"
+                "<link rel='icon' type='image/png' sizes='128x128' href='/icons/favicon-128x128.png'>"
+                "<link id='shared-style' rel='stylesheet' href='/style.css'>"
+                "<style>body{margin:0;background:#111714;color:#f3f7f4;font:16px system-ui}"
+                ".setup-page{min-height:100vh;display:grid;place-items:center;padding:24px}"
+                ".setup-card{width:min(100%,480px);padding:32px;border:1px solid #34483a;border-radius:20px;background:#17201a}"
+                ".activity{display:flex;align-items:center;gap:14px;margin-top:24px}.spinner{width:24px;height:24px;"
                 "border:3px solid #47624e;border-top-color:#1ed760;border-radius:50%;animation:spin .8s linear infinite}"
-                "@keyframes spin{to{transform:rotate(360deg)}}.device-link{display:inline-block;margin-top:28px;"
-                "color:#1ed760;text-decoration:none;font-weight:700}.device-link:hover{text-decoration:underline}"
-                ".error{display:none;margin-top:20px;padding:13px;border:1px solid #714d43;border-radius:10px;"
-                "background:#33231f;color:#ffd6c8}@media(max-width:480px){.card{padding:27px;border-radius:17px}}"
-                "</style></head><body><main class='card'><div class='brand'><span class='mark' aria-hidden='true'>&#9835;</span>"
-                "TinyTrackSpotter</div><div class='eyebrow'>Spotify setup</div><h1 id='title'>Connecting to your device</h1>"
+                "@keyframes spin{to{transform:rotate(360deg)}}.error{display:none}.device-link{color:#1ed760}"
+                "</style></head><body class='setup-page'><main class='setup-card'>"
+                "<div class='brand'><img class='brand-icon' src='/icons/favicon-32x32.png' alt=''>TinyTrackSpotter</div>"
+                "<div class='eyebrow'>Spotify setup</div><h1 id='title'>Connecting to your device</h1>"
                 "<div class='activity' id='activity'><span class='spinner' aria-hidden='true'></span>"
                 "<span id='message'>Waiting for the ESP32 to finish starting...</span></div>"
                 "<div class='error' id='error' role='alert'></div><a class='device-link' href='" + device_url +
                 "' target='_blank' rel='noopener noreferrer'>Return to your Spotify device</a></main>"
-                "<script>const flow=" + str(flow_id) + ";async function poll(){try{const r=await fetch('/login/status?flow='+flow,{cache:'no-store'});"
+                "<script>const flow=" + str(flow_id) + ";const css=document.querySelector('#shared-style');"
+                "css.onerror=()=>setTimeout(()=>css.href='/style.css?retry='+Date.now(),2000);"
+                "async function poll(){try{const r=await fetch('/login/status?flow='+flow,{cache:'no-store'});"
                 "const s=await r.json();if(s.status==='ready'){document.querySelector('#message').textContent='Device ready. Opening Spotify...';"
                 "location.replace(s.authorize_url);return;}if(s.status==='error'){document.querySelector('#title').textContent='Device not ready yet';"
                 "document.querySelector('#activity').style.display='none';const e=document.querySelector('#error');e.textContent=s.message;"
@@ -117,41 +142,43 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
-    def send_page(self, title, message, status=200, device_url=None):
+    def send_page(self, title, message, status=200, device_url=None, redirect_url=None):
         device_url = device_url or getattr(self.server, "esp_url", "")
         device_link = ""
+        redirect_meta = ""
+        redirect_script = ""
         if device_url:
             safe_url = escape(device_url, quote=True)
             device_link = (
                 "<a class='device-link' href='" + safe_url + "' target='_blank' "
-                "rel='noopener noreferrer'>Return to your Spotify device <span aria-hidden='true'>↗</span></a>"
+                "rel='noopener noreferrer'>Return to your Spotify device</a>"
             )
+        if redirect_url:
+            safe_redirect = escape(redirect_url, quote=True)
+            redirect_meta = "<meta http-equiv='refresh' content='5;url=" + safe_redirect + "'>"
+            redirect_script = "<script>setTimeout(()=>location.replace(" + json.dumps(redirect_url) + "),5000);</script>"
 
         body = ("<!doctype html><html lang='en'><head><meta charset='utf-8'>"
                 "<meta name='viewport' content='width=device-width,initial-scale=1'>"
                 "<meta name='color-scheme' content='dark'>"
-                "<title>" + escape(title) + " · TinyTrackSpotter</title>"
-                "<style>"
-                "*{box-sizing:border-box}body{margin:0;min-height:100vh;padding:24px;display:grid;"
-                "place-items:center;background:radial-gradient(ellipse at 50% 0%,#203c2b 0,#111714 58%);"
-                "color:#f3f7f4;font:16px/1.55 Inter,ui-sans-serif,system-ui,-apple-system,Segoe UI,sans-serif}"
-                ".card{width:min(100%,480px);padding:36px;border:1px solid #34483a;border-radius:22px;"
-                "background:rgba(23,32,26,.96);box-shadow:0 24px 80px #0008}"
-                ".brand{display:flex;align-items:center;gap:10px;color:#b9c8bd;font-size:13px;"
-                "font-weight:700;letter-spacing:.12em;text-transform:uppercase}.mark{width:32px;height:32px;"
-                "display:grid;place-items:center;border-radius:50%;background:#1ed760;color:#102016;font-size:17px}"
-                ".eyebrow{margin:32px 0 8px;color:#1ed760;font-size:12px;font-weight:700;"
-                "letter-spacing:.14em;text-transform:uppercase}h1{margin:0;font-size:clamp(27px,6vw,38px);"
-                "line-height:1.12;letter-spacing:-.035em}p{margin:16px 0 0;color:#bdc9c0}"
-                ".device-link{display:flex;justify-content:space-between;align-items:center;margin-top:28px;"
-                "padding:13px 16px;border-radius:10px;background:#1ed760;color:#102016;"
-                "font-weight:750;text-decoration:none}.device-link:hover{background:#63ec91}"
-                ".foot{margin-top:26px!important;font-size:13px;color:#829087}"
-                "@media(max-width:480px){.card{padding:27px;border-radius:17px}}"
-                "</style></head><body><main class='card'><div class='brand'><span class='mark' aria-hidden='true'>♪</span>"
-                "TinyTrackSpotter</div><div class='eyebrow'>Spotify setup</div><h1>" + escape(title) +
+                + redirect_meta + "<title>" + escape(title) + " | TinyTrackSpotter</title>"
+                "<link rel='icon' href='/favicon.ico' sizes='any'>"
+                "<link rel='icon' type='image/png' sizes='16x16' href='/icons/favicon-16x16.png'>"
+                "<link rel='icon' type='image/png' sizes='32x32' href='/icons/favicon-32x32.png'>"
+                "<link rel='icon' type='image/png' sizes='96x96' href='/icons/favicon-96x96.png'>"
+                "<link rel='icon' type='image/png' sizes='128x128' href='/icons/favicon-128x128.png'>"
+                "<link id='shared-style' rel='stylesheet' href='/style.css'>"
+                "<style>body{margin:0;background:#111714;color:#f3f7f4;font:16px system-ui}"
+                ".setup-page{min-height:100vh;display:grid;place-items:center;padding:24px}"
+                ".setup-card{width:min(100%,480px);padding:32px;border:1px solid #34483a;border-radius:20px;background:#17201a}"
+                ".device-link{display:inline-block;margin-top:24px;color:#1ed760}</style></head>"
+                "<body class='setup-page'><main class='setup-card'><div class='brand'>"
+                "<img class='brand-icon' src='/icons/favicon-32x32.png' alt=''>TinyTrackSpotter</div>"
+                "<div class='eyebrow'>Spotify setup</div><h1>" + escape(title) +
                 "</h1><p>" + escape(message) + "</p>" + device_link +
-                "<p class='foot'>You can close this tab when you are ready.</p></main></body></html>").encode("utf-8")
+                "<p class='foot'>You can close this tab when you are ready.</p></main>"
+                "<script>const css=document.querySelector('#shared-style');css.onerror=()=>setTimeout(()=>css.href='/style.css?retry='+Date.now(),2000);</script>"
+                + redirect_script + "</body></html>").encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "text/html; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
@@ -162,6 +189,19 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         parsed = urlsplit(self.path)
         query = parse_qs(parsed.query)
+
+        if parsed.path == "/health.png":
+            self.send_response(200)
+            self.send_header("Content-Type", "image/gif")
+            self.send_header("Content-Length", str(len(HEALTH_GIF)))
+            self.send_header("Cache-Control", "no-store, no-cache, must-revalidate")
+            self.end_headers()
+            self.wfile.write(HEALTH_GIF)
+            return
+
+        if parsed.path in DEVICE_ASSETS:
+            self.send_device_asset(parsed.path)
+            return
 
         if parsed.path == "/login":
             esp_url = query.get("esp", [""])[0]
@@ -243,7 +283,11 @@ class Handler(BaseHTTPRequestHandler):
 
             save_query = urlencode({"refreshToken": refresh_token})
             esp_request(esp_url, "/settings?" + save_query, method="POST")
-            self.send_page("Spotify connected", "The refresh token was saved to your TinyTrackSpotter device.")
+            self.send_page(
+                "Spotify connected",
+                "The refresh token was saved. Returning to your device in a few seconds...",
+                redirect_url=esp_url,
+            )
         except HTTPError as error:
             detail = error.read().decode("utf-8", errors="replace")[:500]
             self.send_page("Authorization failed", detail or str(error), 502)
