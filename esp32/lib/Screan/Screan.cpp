@@ -66,11 +66,11 @@ static void wrapAtSpaces(const String &text, const GFXfont *font, int maxWidth, 
 
 static void drawArtwork(const String &artworkUrl, SpotifyPlaybackStatus status)
 {
-    displayFillRect(18, 32, 150, 150, primary);
-    displayFillRect(21, 35, 144, 144, artworkBackground);
+    displayFillRect(12, 23, 160, 160, primary);
+    displayFillRect(15, 26, 154, 154, artworkBackground);
     if (artworkUrl.length() > 0 && (status == PLAYBACK_PLAYING || status == PLAYBACK_PAUSED))
     {
-        displayJpg("/cover.jpg", 21, 35, 2);
+        displayJpg("/cover.jpg", 15, 26, 4);
         return;
     }
 
@@ -81,7 +81,7 @@ static void drawArtwork(const String &artworkUrl, SpotifyPlaybackStatus status)
         placeholder = "Unavailable";
     else if (status == PLAYBACK_LOADING)
         placeholder = "Loading...";
-    displayText(placeholder, 25, 95, DEFAULT_FONT, 136, artworkBackground, muted);
+    displayText(placeholder, 19, 91, DEFAULT_FONT, 146, artworkBackground, muted);
 }
 
 static void drawProgress(float progress, bool isPlaying)
@@ -99,17 +99,17 @@ static void drawProgress(float progress, bool isPlaying)
             int width = rowWidth * 14 / 9;
             if (width < 1)
                 width = 1;
-            displayFillRect(19 + 14 - width, 204 + row, width, 1, iconColor);
+            displayFillRect(19, 214 + row, width, 1, iconColor);
         }
     }
     else
     {
-        displayFillRect(19, 205, 4, 15, iconColor);
-        displayFillRect(27, 205, 4, 15, iconColor);
+        displayFillRect(19, 215, 4, 15, iconColor);
+        displayFillRect(27, 215, 4, 15, iconColor);
     }
 
     const int barX = 44;
-    const int barY = 211;
+    const int barY = 220;
     const int barWidth = 474;
     int filledWidth = (int)(progress * barWidth);
     displayFillRect(barX, barY, barWidth, 6, artworkBackground);
@@ -156,10 +156,26 @@ static void drawPlaybackScreen(SpotifyPlaybackStatus status, const String &title
     String subtitleLines[3];
     wrapAtSpaces(title, &FreeSans18pt7b, 326, titleLines, 3);
     wrapAtSpaces(subtitle, DEFAULT_FONT, 326, subtitleLines, 3);
+    int titleY = 22;
     for (int i = 0; i < 3; ++i)
     {
-        displayText(titleLines[i], 190, 28 + i * 29, &FreeSans18pt7b, 326, background, white);
-        displayText(subtitleLines[i], 190, 119 + i * 22, DEFAULT_FONT, 326, background, muted);
+        if (titleLines[i].length() == 0)
+            continue;
+        uint16_t height = displayText(titleLines[i], 190, titleY, &FreeSans18pt7b, 326, background, white);
+        Serial.printf("Screen title line %d, y=%d, width=%u: '%s'\n", i + 1, titleY,
+                      (unsigned)displayTextWidth(titleLines[i], &FreeSans18pt7b), titleLines[i].c_str());
+        titleY += height + 4;
+    }
+
+    int subtitleY = max(107, titleY + 6);
+    for (int i = 0; i < 3; ++i)
+    {
+        if (subtitleLines[i].length() == 0)
+            continue;
+        uint16_t height = displayText(subtitleLines[i], 190, subtitleY, DEFAULT_FONT, 326, background, muted);
+        Serial.printf("Screen artist/show line %d, y=%d, width=%u: '%s'\n", i + 1, subtitleY,
+                      (unsigned)displayTextWidth(subtitleLines[i], DEFAULT_FONT), subtitleLines[i].c_str());
+        subtitleY += height + 2;
     }
     drawProgress(progress, isPlaying);
 }

@@ -205,6 +205,7 @@ boolean getCurrentlyPlaying()
     }
     if (httpCode == 204)
     {
+        Serial.println("Spotify playback: no active item (204)");
         http.end();
         clearPlaybackData(PLAYBACK_NOTHING);
         return true;
@@ -230,14 +231,18 @@ boolean getCurrentlyPlaying()
     JsonObject currentPlaying = doc.as<JsonObject>();
     if (!currentPlaying.containsKey("item") || currentPlaying["item"].isNull())
     {
+        Serial.println("Spotify playback: response has no item");
         clearPlaybackData(PLAYBACK_NOTHING);
         return true;
     }
 
     JsonObject item = currentPlaying["item"].as<JsonObject>();
     String trackTitle = item["name"].as<String>();
+    String itemType = currentPlaying["currently_playing_type"].as<String>();
+    Serial.printf("Playback item: type='%s', name='%s'\n", itemType.c_str(), trackTitle.c_str());
     if (trackTitle.length() == 0)
     {
+        Serial.println("Spotify playback: item name is empty");
         clearPlaybackData(PLAYBACK_NOTHING);
         return true;
     }
@@ -247,10 +252,34 @@ boolean getCurrentlyPlaying()
     {
         JsonObject show = item["show"].as<JsonObject>();
         trackSubtitle = show["name"].as<String>();
+        Serial.printf("Playback podcast show: '%s'\n", trackSubtitle.c_str());
     }
-    else if (item.containsKey("artists"))
+    if (trackSubtitle.length() == 0 && item.containsKey("show_name"))
+        trackSubtitle = item["show_name"].as<String>();
+
+    if (trackSubtitle.length() == 0 && item.containsKey("artists"))
     {
         JsonArray artists = item["artists"].as<JsonArray>();
+        Serial.printf("Playback artist count: %u\n", (unsigned)artists.size());
+        for (JsonVariant artist : artists)
+        {
+            String artistName = artist["name"].as<String>();
+            if (artistName.length() > 0)
+            {
+                Serial.printf("Playback artist: '%s'\n", artistName.c_str());
+                if (trackSubtitle.length() > 0)
+                    trackSubtitle += ", ";
+                trackSubtitle += artistName;
+            }
+        }
+    }
+
+    if (trackSubtitle.length() == 0 && item.containsKey("album") && !item["album"].isNull())
+    {
+        JsonObject album = item["album"].as<JsonObject>();
+        JsonArray artists = album["artists"].as<JsonArray>();
+        if (artists.size() > 0)
+            Serial.printf("Playback artist fallback count (album): %u\n", (unsigned)artists.size());
         for (JsonVariant artist : artists)
         {
             String artistName = artist["name"].as<String>();
@@ -259,8 +288,13 @@ boolean getCurrentlyPlaying()
                 if (trackSubtitle.length() > 0)
                     trackSubtitle += ", ";
                 trackSubtitle += artistName;
+                Serial.printf("Playback album artist: '%s'\n", artistName.c_str());
             }
         }
+    }
+    if (trackSubtitle.length() == 0)
+    {
+        Serial.printf("Playback item '%s' has no artist/show subtitle fields\n", trackTitle.c_str());
     }
 
     float durationMs = item["duration_ms"].as<float>();
@@ -277,13 +311,13 @@ boolean getCurrentlyPlaying()
         JsonObject album = item["album"].as<JsonObject>();
         JsonArray images = album["images"].as<JsonArray>();
         if (images.size() > 0)
-            artworkUrl = images[images.size() > 1 ? 1 : 0]["url"].as<String>();
+            artworkUrl = images[0]["url"].as<String>();
     }
     if (artworkUrl.length() == 0)
     {
         JsonArray images = item["images"].as<JsonArray>();
         if (images.size() > 0)
-            artworkUrl = images[images.size() > 1 ? 1 : 0]["url"].as<String>();
+            artworkUrl = images[0]["url"].as<String>();
     }
 
     if (artworkUrl != imageUrl)
@@ -295,6 +329,8 @@ boolean getCurrentlyPlaying()
     imageUrl = artworkUrl;
     hasData = true;
     playbackStatus = isPlaying ? PLAYBACK_PLAYING : PLAYBACK_PAUSED;
+    Serial.printf("Playback parsed: title='%s', subtitle='%s', progress=%.3f, playing=%s\n",
+                  name.c_str(), subtitle.c_str(), progress, isPlaying ? "yes" : "no");
     return true;
 }
 
