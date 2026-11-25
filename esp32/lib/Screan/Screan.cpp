@@ -4,28 +4,54 @@
 #include <Display.h>
 
 uint16_t color = TFT_WHITE;
-uint16_t background = TFT_BLACK; // ((0x19 & 0xF8) << 8) | ((0x14 & 0xFC) << 3) | (0x14 >> 3);
+uint16_t background = ((7 & 0xF8) << 8) | ((15 & 0xFC) << 3) | (12 >> 3);
 uint16_t primary = ((0x1D & 0xF8) << 8) | ((0xB9 & 0xFC) << 3) | (0x54 >> 3);
+uint16_t muted = ((0xA8 & 0xF8) << 8) | ((0xB8 & 0xFC) << 3) | (0xAE >> 3);
+uint16_t warning = TFT_YELLOW;
+uint16_t errorColor = TFT_RED;
 bool isInitialized = false;
 void displaySpotifyAuthStatus(SpotifyAuthStatus status)
 {
-    const char *message = "Spotify setup required";
-    if (status == SPOTIFY_AUTH_CONNECTED)
-        message = "Spotify connected";
-    else if (status == SPOTIFY_AUTH_CONNECTION_ERROR)
-        message = "Spotify connection error";
-
     displayClear(background);
-    displayText("TinyTrackSpotter", 12, 18, &FreeSans18pt7b, 512, background, color);
-    displayText(message, 12, 78, &FreeSans18pt7b, 512, background, color);
+    displayFillRect(0, 0, 536, 5, primary);
+    displayText("TINYTRACKSPOTTER", 18, 15, DEFAULT_FONT, 500, background, primary);
+
+    String message = "Spotify setup required";
+    uint16_t messageColor = color;
+    if (status == SPOTIFY_AUTH_CONNECTED)
+    {
+        message = "Spotify connected";
+        messageColor = primary;
+    }
+    else if (status == SPOTIFY_AUTH_REQUIRED)
+    {
+        message = "Spotify authorization required";
+        messageColor = warning;
+    }
+    else if (status == SPOTIFY_AUTH_CONNECTION_ERROR)
+    {
+        message = "Spotify connection error";
+        messageColor = errorColor;
+    }
+    displayText(message, 18, 49, &FreeSans18pt7b, 500, background, messageColor);
+    displayFillRect(18, 94, 500, 1, muted);
+
     if (status == SPOTIFY_AUTH_NOT_CONFIGURED || status == SPOTIFY_AUTH_REQUIRED)
     {
-        displayText("Open http://spotifydisplay.local", 12, 132, DEFAULT_FONT, 512, background, color);
+        displayText("Open this page in your browser:", 18, 105, DEFAULT_FONT, 500, background, muted);
+        displayText("http://spotifydisplay.local", 18, 131, &FreeSans18pt7b, 500, background, primary);
         if (WiFi.status() == WL_CONNECTED)
-            displayText("IP: http://" + WiFi.localIP().toString(), 12, 162, DEFAULT_FONT, 512, background, color);
+        {
+            displayText("Or use the device IP:", 18, 171, DEFAULT_FONT, 500, background, muted);
+            displayText("http://" + WiFi.localIP().toString(), 18, 193, DEFAULT_FONT, 500, background, color);
+        }
         else
-            displayText("Connect to Wi-Fi to open setup", 12, 162, DEFAULT_FONT, 512, background, color);
+            displayText("Connect the device to Wi-Fi first.", 18, 171, DEFAULT_FONT, 500, background, warning);
     }
+    else if (status == SPOTIFY_AUTH_CONNECTED)
+        displayText("Authentication is ready.", 18, 105, DEFAULT_FONT, 500, background, muted);
+    else
+        displayText("Check Wi-Fi, then retry from the setup page.", 18, 105, DEFAULT_FONT, 500, background, muted);
 }
 
 void initScrean()
