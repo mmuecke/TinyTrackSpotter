@@ -48,15 +48,18 @@ void setup()
   Serial.println("Initialized settings");
   displayPrintLine("Initialized settings");
 
-  displayPrintLine("Initializeing WiFi: " + String(WIFI_SSID));
+  displayPrintLine("Connecting WiFi: " + String(WIFI_SSID));
   success = initWiFi(WIFI_SSID, WIFI_PASS, MDNS_NAME);
   if (!success)
   {
-    Serial.println("Error initializing WiFi");
-    return;
+    Serial.println("Wi-Fi unavailable; continuing startup with background retries");
+    displayPrintLine("WiFi offline; retrying");
   }
-  Serial.println("Initialized WiFi");
-  displayPrintLine("Initialized WiFi");
+  else
+  {
+    Serial.println("Initialized WiFi");
+    displayPrintLine("Initialized WiFi");
+  }
 
   success = initWebServer();
   if (!success)
@@ -67,20 +70,26 @@ void setup()
   displayPrintLine("Initialized web server");
 
   // success = initSpotify();
-  if (!success)
-  {
-    Serial.println("Error initializing Spotify");
-    return;
-  }
-  Serial.println("Initialized Spotify");
-  displayPrintLine("Initialized Spotify");
+  // if (!success)
+  // {
+  //   Serial.println("Error initializing Spotify");
+  //   return;
+  // }
+  // Serial.println("Initialized Spotify");
+  // displayPrintLine("Initialized Spotify");
 
-  displayPrintLine("Initialization complete");
+  // displayPrintLine("Initialization complete");
+  Serial.println("Startup complete");
+  displayPrintLine("Startup complete");
 }
 
 void loop()
 {
   updateWiFi();
-  updateCurrentPlaying();
-  updateScrean();
+  // if (hasWiFiStatusUpdate() && getWiFiStatus())
+  // {
+  //   displayPrintLine(String(MDNS_NAME) + ".local");
+  // }
+  // updateCurrentPlaying();
+  // updateScrean();
 }
