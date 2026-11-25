@@ -2,10 +2,30 @@
 #include "Web.h"
 #include "LittleFS.h"
 #include <ESPAsyncWebServer.h>
+#include <WiFi.h>
 #include "Settings.h"
 #include "Spotify.h"
 // Port des Webservers auf 80 setzen
 AsyncWebServer server(80);
+
+static void sendStaticFile(AsyncWebServerRequest *request, const char *path, const char *contentType, bool download = false)
+{
+    // Settings reads unmount LittleFS after each request, so mount it again
+    // before serving the next page or asset request.
+    if (!LittleFS.begin())
+    {
+        Serial.println("Web: failed to mount LittleFS while serving " + String(path));
+        request->send(500, "text/plain", "LittleFS mount failed; upload the filesystem image");
+        return;
+    }
+    if (!LittleFS.exists(path))
+    {
+        Serial.println("Web: missing file " + String(path) + "; upload the filesystem image");
+        request->send(404, "text/plain", "Web page missing; upload the filesystem image");
+        return;
+    }
+    request->send(LittleFS, path, contentType, download);
+}
 
 bool checkSingleArg(AsyncWebServerRequest *request)
 {
@@ -72,15 +92,11 @@ bool initWebServer()
     server.onNotFound([](AsyncWebServerRequest *request)
                       { request->send(404, "text/plain", "NotFund"); });
     server.on("/", HTTP_GET, [](AsyncWebServerRequest *request)
-              { request->send(LittleFS, "/index.html", String(), false); });
+              { sendStaticFile(request, "/index.html", "text/html"); });
     server.on("/index.html", HTTP_GET, [](AsyncWebServerRequest *request)
-              { request->send(LittleFS, "/index.html", String(), false); });
-    server.on("/index.js", HTTP_GET, [](AsyncWebServerRequest *request)
-              { request->send(LittleFS, "/index.js", String(), false); });
-    server.on("/settings.js", HTTP_GET, [](AsyncWebServerRequest *request)
-              { request->send(LittleFS, "/settings.js", String(), false); });
-    server.on("/style.css", HTTP_GET, [](AsyncWebServerRequest *request)
-              { request->send(LittleFS, "/style.css", String(), false); });
+              { sendStaticFile(request, "/index.html", "text/html"); });
+    server.on("/spotify_oauth_helper.py", HTTP_GET, [](AsyncWebServerRequest *request)
+              { sendStaticFile(request, "/spotify_oauth_helper.py", "application/octet-stream", true); });
 
     server.on("/settings", HTTP_GET, [](AsyncWebServerRequest *request)
               { handelGetSettingsRequest(request); });
@@ -88,7 +104,8 @@ bool initWebServer()
               { handelSetSettingsRequest(request); });
     server.on("/auth/status", HTTP_GET, [](AsyncWebServerRequest *request)
               {
-                  String body = "{\"status\":\"" + String(getSpotifyAuthStatusName()) + "\"}";
+                  String deviceIp = WiFi.status() == WL_CONNECTED ? WiFi.localIP().toString() : "";
+                  String body = "{\"status\":\"" + String(getSpotifyAuthStatusName()) + "\",\"device_ip\":\"" + deviceIp + "\"}";
                   request->send(200, "application/json", body);
               });
     server.begin();

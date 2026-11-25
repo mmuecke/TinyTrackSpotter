@@ -17,6 +17,8 @@ static void startMdnsIfNeeded(const char *mdnsName)
     if (!mdnsStarted && WiFi.status() == WL_CONNECTED)
     {
         mdnsStarted = MDNS.begin(mdnsName);
+        if (mdnsStarted)
+            MDNS.addService("http", "tcp", 80);
         Serial.printf("mDNS %s: %s.local\n", mdnsStarted ? "started" : "failed", mdnsName);
     }
 }

@@ -34,6 +34,7 @@ static bool authCheckRequested = true;
 static unsigned long lastAuthCheck = 0;
 static const unsigned long authCheckIntervalMs = 10000;
 static bool refreshHadConnectionError = false;
+static bool refreshAccessToken();
 
 SpotifyAuthStatus getSpotifyAuthStatus()
 {
@@ -312,7 +313,7 @@ boolean getCurrentlyPlaying()
     return true;
 }
 
-bool refreshAccessToken()
+static bool refreshAccessToken()
 {
     String clientId = getSetting("clientId", true);
     String clientSecret = getSetting("clientSecret", true);

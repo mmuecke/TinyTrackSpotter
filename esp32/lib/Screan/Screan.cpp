@@ -18,6 +18,14 @@ void displaySpotifyAuthStatus(SpotifyAuthStatus status)
     displayClear(background);
     displayText("TinyTrackSpotter", 12, 18, &FreeSans18pt7b, 512, background, color);
     displayText(message, 12, 78, &FreeSans18pt7b, 512, background, color);
+    if (status == SPOTIFY_AUTH_NOT_CONFIGURED || status == SPOTIFY_AUTH_REQUIRED)
+    {
+        displayText("Open http://spotifydisplay.local", 12, 132, DEFAULT_FONT, 512, background, color);
+        if (WiFi.status() == WL_CONNECTED)
+            displayText("IP: http://" + WiFi.localIP().toString(), 12, 162, DEFAULT_FONT, 512, background, color);
+        else
+            displayText("Connect to Wi-Fi to open setup", 12, 162, DEFAULT_FONT, 512, background, color);
+    }
 }
 
 void initScrean()

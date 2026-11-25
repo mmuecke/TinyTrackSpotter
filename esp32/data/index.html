@@ -1,3 +1,114 @@
-<!DOCTYPE html><html><head><title>TinyTrackSpotterUi</title><meta charset=utf-8><meta name=description content="TinyTrakSpotterUI a Web UI for the TinyTrakSpotter"><meta name=format-detection content="telephone=no"><meta name=msapplication-tap-highlight content=no><meta name=viewport content="user-scalable=no,initial-scale=1,maximum-scale=1,minimum-scale=1,width=device-width"><link rel=icon type=image/png sizes=128x128 href="/icons/favicon-128x128.png"><link rel=icon type=image/png sizes=96x96 href="/icons/favicon-96x96.png"><link rel=icon type=image/png sizes=32x32 href="/icons/favicon-32x32.png"><link rel=icon type=image/png sizes=16x16 href="/icons/favicon-16x16.png"><link rel=icon type=image/ico href="/favicon.ico">  <script type="module" crossorigin src="/assets/index.6faae303.js"></script>
-  <link rel="stylesheet" href="/assets/index.bda74a7d.css">
-</head><body><div id=q-app></div></body></html>
+﻿<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TinyTrackSpotter setup</title>
+  <style>
+    :root { color-scheme: dark; font: 16px/1.5 system-ui, sans-serif; background: #101613; color: #f1f5f2; }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 24px; }
+    main { width: min(100%, 440px); padding: 28px; border: 1px solid #35443b; border-radius: 16px; background: #19221c; }
+    h1 { margin: 0 0 8px; font-size: 1.6rem; }
+    p { color: #bfcbc2; margin: 8px 0 18px; }
+    label { display: block; margin: 14px 0 5px; font-size: .9rem; }
+    input { width: 100%; padding: 11px 12px; border: 1px solid #526157; border-radius: 8px; color: inherit; background: #101613; }
+    button { width: 100%; margin-top: 20px; padding: 12px; border: 0; border-radius: 8px; color: #102016; background: #1ed760; font-weight: 700; cursor: pointer; }
+    button:disabled { opacity: .55; cursor: wait; }
+    #status { padding: 10px 12px; border-radius: 8px; background: #26352b; color: #d9e5dc; }
+    #message { min-height: 1.5em; margin-bottom: 0; }
+    .hint { margin-top: 18px; font-size: .85rem; }
+    a { color: #1ed760; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>TinyTrackSpotter</h1>
+    <p>Connect Spotify to let the display read your current playback.</p>
+    <div id="status" role="status">Checking Spotify connection…</div>
+    <label for="clientId">Spotify Client ID</label>
+    <input id="clientId" autocomplete="off" spellcheck="false">
+    <label for="clientSecret">Spotify Client Secret</label>
+    <input id="clientSecret" autocomplete="off" spellcheck="false">
+    <button id="connect">Save and connect Spotify</button>
+    <p id="message" role="status"></p>
+    <p class="hint">Create your Spotify app and find the Client ID and Client Secret in the <a href="https://developer.spotify.com/dashboard" target="_blank" rel="noopener">Spotify Developer Dashboard</a>.</p>
+    <p class="hint">Download the <a href="/spotify_oauth_helper.py" download="spotify_oauth_helper.py">local OAuth helper</a> and run <code>python spotify_oauth_helper.py</code> on this computer. Register <code>http://127.0.0.1:8888/callback</code> as the app redirect URI.</p>
+  </main>
+  <script>
+    const statusNode = document.querySelector('#status');
+    const messageNode = document.querySelector('#message');
+    const button = document.querySelector('#connect');
+    const clientIdInput = document.querySelector('#clientId');
+    const clientSecretInput = document.querySelector('#clientSecret');
+    let deviceIp = '';
+
+    async function getSetting(key) {
+      const response = await fetch(`/settings?${encodeURIComponent(key)}`);
+      if (!response.ok) throw new Error(`Could not load ${key}`);
+      return response.text();
+    }
+
+    async function saveSetting(key, value) {
+      const query = new URLSearchParams({ [key]: value });
+      const response = await fetch(`/settings?${query}`, { method: 'POST' });
+      if (!response.ok) throw new Error(`Could not save ${key}`);
+    }
+
+    async function refreshStatus() {
+      try {
+        const response = await fetch('/auth/status', { cache: 'no-store' });
+        const result = await response.json();
+        deviceIp = result.device_ip || '';
+        const labels = {
+          not_configured: 'Spotify setup required',
+          authentication_required: 'Spotify authentication required',
+          connected: 'Spotify connected',
+          connection_error: 'Could not reach Spotify; retrying connection check',
+        };
+        statusNode.textContent = labels[result.status] || 'Spotify status unavailable';
+      } catch (_) {
+        statusNode.textContent = 'Could not read device status';
+      }
+    }
+
+    async function loadSettings() {
+      try {
+        [clientIdInput.value, clientSecretInput.value] = await Promise.all([
+          getSetting('clientId'), getSetting('clientSecret'),
+        ]);
+      } catch (error) {
+        messageNode.textContent = error.message;
+      }
+    }
+
+    button.addEventListener('click', async () => {
+      button.disabled = true;
+      messageNode.textContent = 'Saving settings...';
+      try {
+        const clientId = clientIdInput.value.trim();
+        const clientSecret = clientSecretInput.value.trim();
+        if (!clientId || !clientSecret) throw new Error('Enter both Spotify app values first.');
+        await saveSetting('clientId', clientId);
+        await saveSetting('clientSecret', clientSecret);
+        const statusResponse = await fetch('/auth/status', { cache: 'no-store' });
+        const status = await statusResponse.json();
+        deviceIp = status.device_ip || deviceIp;
+        if (!deviceIp) throw new Error('The device has no Wi-Fi IP address yet.');
+        const helperUrl = new URL('http://127.0.0.1:8888/login');
+        helperUrl.searchParams.set('esp', `http://${deviceIp}`);
+        window.open(helperUrl, '_blank', 'noopener');
+        messageNode.textContent = 'Complete Spotify approval in the opened tab. This page will update when the device connects.';
+      } catch (error) {
+        messageNode.textContent = error.message;
+      } finally {
+        button.disabled = false;
+      }
+    });
+
+    loadSettings();
+    refreshStatus();
+    setInterval(refreshStatus, 3000);
+  </script>
+</body>
+</html>
