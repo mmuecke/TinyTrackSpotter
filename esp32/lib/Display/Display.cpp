@@ -37,14 +37,17 @@ static bool captureCoverBlock(int16_t x, int16_t y, uint16_t w, uint16_t h, uint
 static void coverDecodeTask(void *)
 {
     bool ok = false;
+    const char *errorReason = "unknown decoder error";
     uint8_t *jpeg = nullptr;
     File file;
     if (LittleFS.begin())
     {
         file = LittleFS.open("/cover.jpg", "r");
-        if (file && file.size() > 0 && file.size() <= MAX_COVER_JPEG_BYTES)
+        bool coverFileExists = (bool)file;
+        size_t coverFileSize = coverFileExists ? file.size() : 0;
+        if (coverFileExists && coverFileSize > 0 && coverFileSize <= MAX_COVER_JPEG_BYTES)
         {
-            size_t jpegSize = file.size();
+            size_t jpegSize = coverFileSize;
             jpeg = (uint8_t *)malloc(jpegSize);
             if (jpeg && file.read(jpeg, jpegSize) == jpegSize)
             {
@@ -69,13 +72,22 @@ static void coverDecodeTask(void *)
                         bool decoded = TJpgDec.drawJpg(0, 0, jpeg, jpegSize) == JDR_OK;
                         TJpgDec.setCallback(pushImage);
                         ok = decoded && !coverDecodeBoundsError;
+                        if (!decoded)
+                            errorReason = "JPEG decode failed";
+                        else if (coverDecodeBoundsError)
+                            errorReason = "resized JPEG exceeded cover bounds";
                     }
+                    else
+                        errorReason = "required JPEG resize scale exceeds 8";
                 }
+                else
+                    errorReason = "invalid JPEG dimensions or header";
             }
             else
             {
                 file.close();
                 LittleFS.end();
+                errorReason = jpeg ? "could not read complete cover image" : "not enough memory for cover image";
             }
         }
         else
@@ -83,9 +95,15 @@ static void coverDecodeTask(void *)
             if (file)
                 file.close();
             LittleFS.end();
+            errorReason = !coverFileExists ? "cover image file is missing" :
+                          coverFileSize == 0 ? "cover image file is empty" : "cover image exceeds size limit";
         }
     }
+    else
+        errorReason = "could not mount LittleFS";
     free(jpeg);
+    if (!ok)
+        Serial.printf("ERROR: Cover resize/decode failed: %s\n", errorReason);
     coverDecodeState = ok ? 2 : 3;
     vTaskDelete(nullptr);
 }
@@ -184,6 +202,7 @@ bool displayQueueCoverDecode(int x, int y)
     coverDecodeState = 1;
     if (xTaskCreatePinnedToCore(coverDecodeTask, "cover-decode", 8192, nullptr, 1, nullptr, 0) != pdPASS)
     {
+        Serial.println("ERROR: Could not start cover resize/decode task");
         coverDecodeState = 3;
         return false;
     }
@@ -200,6 +219,8 @@ DisplayJpgTaskResult displayProcessCoverDecode()
         // unexpected JPEG size must never let the LCD address window reach text.
         if (coverWidth == 0 || coverHeight == 0 || coverWidth > COVER_SIZE || coverHeight > COVER_SIZE)
         {
+            Serial.printf("ERROR: Resized cover dimensions out of bounds: %ux%u (max %d)\n",
+                          (unsigned)coverWidth, (unsigned)coverHeight, COVER_SIZE);
             coverDecodeState = 0;
             return DISPLAY_JPG_FAILED;
         }

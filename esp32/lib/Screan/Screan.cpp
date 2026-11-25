@@ -76,15 +76,72 @@ static void wrapAtSpaces(const String &text, const GFXfont *font, int maxWidth, 
     }
 }
 
-static void drawArtworkPlaceholder(const char *label)
+enum ArtworkPlaceholderIcon
+{
+    ARTWORK_ICON_DEFAULT,
+    ARTWORK_ICON_NOT_LOADED,
+    ARTWORK_ICON_LOADING,
+    ARTWORK_ICON_RESIZE_ERROR
+};
+
+static void drawArtworkPlaceholder(const char *label, ArtworkPlaceholderIcon icon = ARTWORK_ICON_DEFAULT)
 {
     displayFillRect(12, 23, 160, 160, primary);
     displayFillRect(15, 26, 154, 154, artworkBackground);
-    // A small, calm music mark gives the empty tile some structure while art loads.
-    displayFillRect(76, 70, 8, 21, primary);
-    displayFillRect(88, 61, 8, 30, primary);
-    displayFillRect(100, 75, 8, 16, primary);
-    displayFillRect(63, 98, 58, 2, muted);
+    // Every artwork-state symbol is centered on the 160 px cover tile.
+    const int iconCenterX = 92;
+    const int iconCenterY = 103;
+    if (icon == ARTWORK_ICON_LOADING)
+    {
+        // Eight ticks around a centered spinner.
+        displayFillRect(iconCenterX - 4, iconCenterY - 38, 8, 12, primary);
+        displayFillRect(iconCenterX + 17, iconCenterY - 30, 8, 8, primary);
+        displayFillRect(iconCenterX + 26, iconCenterY - 4, 12, 8, primary);
+        displayFillRect(iconCenterX + 17, iconCenterY + 22, 8, 8, muted);
+        displayFillRect(iconCenterX - 4, iconCenterY + 26, 8, 12, muted);
+        displayFillRect(iconCenterX - 25, iconCenterY + 22, 8, 8, muted);
+        displayFillRect(iconCenterX - 38, iconCenterY - 4, 12, 8, muted);
+        displayFillRect(iconCenterX - 25, iconCenterY - 30, 8, 8, muted);
+    }
+    else if (icon == ARTWORK_ICON_RESIZE_ERROR)
+    {
+        // Broken-image frame plus a red warning triangle and exclamation mark.
+        displayFillRect(iconCenterX - 30, iconCenterY - 25, 60, 4, muted);
+        displayFillRect(iconCenterX - 30, iconCenterY + 19, 60, 4, muted);
+        displayFillRect(iconCenterX - 30, iconCenterY - 25, 4, 48, muted);
+        displayFillRect(iconCenterX + 26, iconCenterY - 25, 4, 48, muted);
+        displayFillRect(iconCenterX - 18, iconCenterY + 5, 14, 4, primary);
+        displayFillRect(iconCenterX - 8, iconCenterY - 5, 14, 4, primary);
+        displayFillRect(iconCenterX + 2, iconCenterY + 5, 12, 4, primary);
+        displayFillRect(iconCenterX + 8, iconCenterY - 24, 3, 7, errorColor);
+        displayFillRect(iconCenterX + 5, iconCenterY - 18, 9, 4, errorColor);
+        displayFillRect(iconCenterX + 2, iconCenterY - 14, 15, 4, errorColor);
+        displayFillRect(iconCenterX - 1, iconCenterY - 10, 21, 4, errorColor);
+        displayFillRect(iconCenterX + 7, iconCenterY - 21, 3, 6, TFT_WHITE);
+        displayFillRect(iconCenterX + 7, iconCenterY - 13, 3, 3, TFT_WHITE);
+    }
+    else if (icon == ARTWORK_ICON_NOT_LOADED)
+    {
+        // Empty picture frame with a simple landscape, centered in the tile.
+        displayFillRect(iconCenterX - 28, iconCenterY - 22, 56, 4, muted);
+        displayFillRect(iconCenterX - 28, iconCenterY + 22, 56, 4, muted);
+        displayFillRect(iconCenterX - 28, iconCenterY - 22, 4, 48, muted);
+        displayFillRect(iconCenterX + 24, iconCenterY - 22, 4, 48, muted);
+        displayFillRect(iconCenterX - 20, iconCenterY + 12, 8, 4, primary);
+        displayFillRect(iconCenterX - 12, iconCenterY + 4, 8, 4, primary);
+        displayFillRect(iconCenterX - 4, iconCenterY - 4, 8, 4, primary);
+        displayFillRect(iconCenterX + 4, iconCenterY + 4, 8, 4, primary);
+        displayFillRect(iconCenterX + 12, iconCenterY + 12, 8, 4, primary);
+        displayFillRect(iconCenterX + 10, iconCenterY - 13, 6, 6, muted);
+    }
+    else
+    {
+        // A small music mark for non-artwork empty states.
+        displayFillRect(76, 70, 8, 21, primary);
+        displayFillRect(88, 61, 8, 30, primary);
+        displayFillRect(100, 75, 8, 16, primary);
+        displayFillRect(63, 98, 58, 2, muted);
+    }
     if (label && label[0])
     {
         String displayLabel = label;
@@ -101,9 +158,12 @@ static void drawArtworkPlaceholder(const char *label)
 
 static void drawArtwork(const String &artworkUrl, SpotifyPlaybackStatus status)
 {
-    if (artworkUrl.length() && (status == PLAYBACK_PLAYING || status == PLAYBACK_PAUSED))
+    if (status == PLAYBACK_PLAYING || status == PLAYBACK_PAUSED)
     {
-        drawArtworkPlaceholder(getArtworkStatus() == ARTWORK_ERROR ? "Cover unavailable" : "Loading cover...");
+        ArtworkPlaceholderIcon icon = artworkUrl.length() == 0 || getArtworkStatus() == ARTWORK_ERROR
+                                          ? ARTWORK_ICON_NOT_LOADED
+                                          : ARTWORK_ICON_LOADING;
+        drawArtworkPlaceholder("", icon);
         return;
     }
     const char *label = "No cover art";
@@ -156,7 +216,7 @@ static void updateArtwork(const String &url, SpotifyPlaybackStatus status)
         queuedArtworkUrl = "";
         Serial.printf("Cover decode failed: '%s'\n", failedArtworkUrl.c_str());
         if (failedArtworkUrl == url)
-            drawArtworkPlaceholder("Cover unavailable");
+            drawArtworkPlaceholder("", ARTWORK_ICON_RESIZE_ERROR);
     }
 
     bool hasPlayback = status == PLAYBACK_PLAYING || status == PLAYBACK_PAUSED;
@@ -174,7 +234,7 @@ static void updateArtwork(const String &url, SpotifyPlaybackStatus status)
 
     if (url != drawnArtworkUrl && url != queuedArtworkUrl && url != failedArtworkUrl)
     {
-        drawArtworkPlaceholder(getArtworkStatus() == ARTWORK_READY ? "Preparing cover..." : "Loading cover...");
+        drawArtworkPlaceholder("", ARTWORK_ICON_LOADING);
     }
 
     if (url == drawnArtworkUrl)
@@ -184,19 +244,19 @@ static void updateArtwork(const String &url, SpotifyPlaybackStatus status)
     if (artworkStatus == ARTWORK_ERROR)
     {
         failedArtworkUrl = url;
-        drawArtworkPlaceholder("Cover unavailable");
+        drawArtworkPlaceholder("", ARTWORK_ICON_NOT_LOADED);
     }
     else if (artworkStatus == ARTWORK_READY && queuedArtworkUrl.length() == 0 && url != failedArtworkUrl)
     {
         if (displayQueueCoverDecode(12, 23))
         {
             queuedArtworkUrl = url;
-            drawArtworkPlaceholder("Preparing cover...");
+            drawArtworkPlaceholder("", ARTWORK_ICON_LOADING);
         }
         else
         {
             failedArtworkUrl = url;
-            drawArtworkPlaceholder("Cover unavailable");
+            drawArtworkPlaceholder("", ARTWORK_ICON_RESIZE_ERROR);
         }
     }
 }
