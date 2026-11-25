@@ -19,6 +19,16 @@ static String failedArtworkUrl = "";
 static float drawnProgress = -1;
 static SpotifyPlaybackStatus drawnPlaybackStatus = PLAYBACK_LOADING;
 static bool drawnIsPlaying = false;
+static const int progressBarWidth = 474;
+
+static int progressPixelWidth(float progress)
+{
+    if (progress < 0)
+        progress = 0;
+    if (progress > 1)
+        progress = 1;
+    return (int)(progress * progressBarWidth);
+}
 
 static String fitWithEllipsis(String text, const GFXfont *font, int maxWidth)
 {
@@ -77,9 +87,15 @@ static void drawArtworkPlaceholder(const char *label)
     displayFillRect(63, 98, 58, 2, muted);
     if (label && label[0])
     {
-        int labelWidth = displayTextWidth(label, DEFAULT_FONT);
+        String displayLabel = label;
+        int labelWidth = displayTextWidth(displayLabel, DEFAULT_FONT);
+        if (labelWidth > 150)
+        {
+            displayLabel = fitWithEllipsis(displayLabel, DEFAULT_FONT, 150);
+            labelWidth = displayTextWidth(displayLabel, DEFAULT_FONT);
+        }
         int labelX = 15 + max(0, (154 - labelWidth) / 2);
-        displayText(label, labelX, 119, DEFAULT_FONT, min(154, labelWidth + 2), artworkBackground, muted);
+        displayText(displayLabel, labelX, 119, DEFAULT_FONT, min(154, labelWidth + 2), artworkBackground, muted);
     }
 }
 
@@ -172,7 +188,7 @@ static void updateArtwork(const String &url, SpotifyPlaybackStatus status)
     }
     else if (artworkStatus == ARTWORK_READY && queuedArtworkUrl.length() == 0 && url != failedArtworkUrl)
     {
-        if (displayQueueCoverDecode(15, 26))
+        if (displayQueueCoverDecode(12, 23))
         {
             queuedArtworkUrl = url;
             drawArtworkPlaceholder("Preparing cover...");
@@ -211,8 +227,8 @@ static void drawProgress(float progress, bool isPlaying)
 
     const int barX = 44;
     const int barY = 220;
-    const int barWidth = 474;
-    int filledWidth = (int)(progress * barWidth);
+    const int barWidth = progressBarWidth;
+    int filledWidth = progressPixelWidth(progress);
     displayFillRect(barX, barY, barWidth, 6, artworkBackground);
     if (filledWidth > 0)
         displayFillRect(barX, barY, filledWidth, 6, primary);
@@ -355,7 +371,7 @@ void updateScrean()
         drawnProgress = progress;
     }
 
-    if (progress != drawnProgress)
+    if (progressPixelWidth(progress) != progressPixelWidth(drawnProgress))
     {
         drawProgress(progress, isPlaying);
         drawnProgress = progress;

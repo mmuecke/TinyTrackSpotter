@@ -27,6 +27,9 @@ String subtitle = "";
 String last_subtitle = "";
 float progress = 0;
 float last_progress = 0;
+static float progressMs = 0;
+static float durationMs = 0;
+static unsigned long progressSampleAt = 0;
 bool isPlaying = false;
 bool last_isPlaying = false;
 int lastUpdate = millis();
@@ -59,6 +62,9 @@ static void clearPlaybackData(SpotifyPlaybackStatus status)
     subtitle = "";
     imageUrl = "";
     progress = 0;
+    progressMs = 0;
+    durationMs = 0;
+    progressSampleAt = millis();
     isPlaying = false;
     playbackStatus = status;
 }
@@ -180,8 +186,16 @@ boolean hasProgressUpdate()
 
 float getProgress()
 {
-    last_progress = progress;
-    return progress;
+    float currentProgress = progress;
+    if (isPlaying && durationMs > 0)
+    {
+        float currentProgressMs = progressMs + (unsigned long)(millis() - progressSampleAt);
+        if (currentProgressMs > durationMs)
+            currentProgressMs = durationMs;
+        currentProgress = currentProgressMs / durationMs;
+    }
+    last_progress = currentProgress;
+    return currentProgress;
 }
 
 boolean hasIsPlayingUpdate()
@@ -307,9 +321,9 @@ boolean getCurrentlyPlaying()
         Serial.printf("Playback item '%s' has no artist/show subtitle fields\n", trackTitle.c_str());
     }
 
-    float durationMs = item["duration_ms"].as<float>();
-    float progressMs = currentPlaying["progress_ms"].as<float>();
-    float trackProgress = durationMs > 0 ? progressMs / durationMs : 0;
+    float trackDurationMs = item["duration_ms"].as<float>();
+    float trackProgressMs = currentPlaying["progress_ms"].as<float>();
+    float trackProgress = trackDurationMs > 0 ? trackProgressMs / trackDurationMs : 0;
     if (trackProgress < 0)
         trackProgress = 0;
     if (trackProgress > 1)
@@ -338,7 +352,10 @@ boolean getCurrentlyPlaying()
     name = trackTitle;
     subtitle = trackSubtitle;
     progress = trackProgress;
+    progressMs = trackProgressMs;
+    durationMs = trackDurationMs;
     isPlaying = currentPlaying["is_playing"].as<bool>();
+    progressSampleAt = millis();
     imageUrl = artworkUrl;
     hasData = true;
     playbackStatus = isPlaying ? PLAYBACK_PLAYING : PLAYBACK_PAUSED;
@@ -536,13 +553,18 @@ void updateCurrentPlaying()
         lastUpdate = millis();
         break;
     case WAIT:
-        if (millis() - lastUpdate > 10000)
+    {
+        bool trackEnded = isPlaying && durationMs > 0 &&
+                          (unsigned long)(millis() - progressSampleAt) >=
+                              (unsigned long)max(0.0f, durationMs - progressMs);
+        if (trackEnded || millis() - lastUpdate > 2000)
         {
-            Serial.println("Go to next update");
+            Serial.println(trackEnded ? "Track ended; refreshing playback" : "Go to next update");
             spotifyState = UPDATE;
             lastUpdate = millis();
         }
         break;
+    }
     default:
         break;
     }

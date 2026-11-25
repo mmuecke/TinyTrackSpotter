@@ -205,6 +205,8 @@ DisplayJpgTaskResult displayProcessCoverDecode()
         }
         int centeredX = coverX + (COVER_SIZE - coverWidth) / 2;
         int centeredY = coverY + (COVER_SIZE - coverHeight) / 2;
+        const uint16_t artworkBackground = ((28 & 0xF8) << 8) | ((40 & 0xFC) << 3) | (32 >> 3);
+        displayFillRect(coverX, coverY, COVER_SIZE, COVER_SIZE, artworkBackground);
         for (uint16_t row = 0; row < coverHeight; ++row)
             lcd_PushColors(centeredX, centeredY + row, coverWidth, 1,
                            coverPixels + row * coverWidth);
