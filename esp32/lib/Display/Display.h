@@ -22,6 +22,7 @@ uint16_t displayText(
     int width = 0,
     uint16_t background = TFT_BLACK,
     uint16_t color = TFT_WHITE);
+uint16_t displayTextWidth(String text, const GFXfont *font = DEFAULT_FONT);
 void displayPrintLine(String text);
 void displayPrint(String text);
 void displayJpg(String filename, int xpos, int ypos, int scale = 1);

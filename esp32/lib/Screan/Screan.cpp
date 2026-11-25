@@ -18,36 +18,59 @@ static float drawnProgress = -1;
 static SpotifyPlaybackStatus drawnPlaybackStatus = PLAYBACK_LOADING;
 static bool drawnIsPlaying = false;
 
-static void splitText(const String &text, int maxLength, String &first, String &second)
+static String fitWithEllipsis(String text, const GFXfont *font, int maxWidth)
 {
-    String value = text;
-    value.trim();
-    if (value.length() <= maxLength)
+    const String suffix = "...";
+    while (text.length() > 0 && displayTextWidth(text + suffix, font) > maxWidth)
     {
-        first = value;
-        second = "";
-        return;
+        int space = text.lastIndexOf(' ');
+        if (space > 0)
+            text = text.substring(0, space);
+        else
+            text.remove(text.length() - 1);
     }
+    return text + suffix;
+}
 
-    int splitAt = value.lastIndexOf(' ', maxLength);
-    if (splitAt <= 0)
-        splitAt = maxLength;
-    first = value.substring(0, splitAt);
-    int secondStart = splitAt;
-    while (secondStart < value.length() && value[secondStart] == ' ')
-        ++secondStart;
-    second = value.substring(secondStart);
-    if (second.length() > maxLength)
-        second = second.substring(0, maxLength - 3) + "...";
+static void wrapAtSpaces(const String &text, const GFXfont *font, int maxWidth, String *lines, int maxLines)
+{
+    for (int i = 0; i < maxLines; ++i)
+        lines[i] = "";
+
+    String remaining = text;
+    remaining.trim();
+    for (int lineIndex = 0; lineIndex < maxLines && remaining.length() > 0; ++lineIndex)
+    {
+        int cutAt = remaining.length();
+        while (cutAt > 0 && displayTextWidth(remaining.substring(0, cutAt), font) > maxWidth)
+        {
+            int space = remaining.lastIndexOf(' ', cutAt - 1);
+            if (space <= 0)
+            {
+                lines[lineIndex] = fitWithEllipsis(remaining, font, maxWidth);
+                remaining = "";
+                break;
+            }
+            cutAt = space;
+        }
+        if (remaining.length() == 0)
+            break;
+
+        lines[lineIndex] = remaining.substring(0, cutAt);
+        remaining = remaining.substring(cutAt);
+        remaining.trim();
+        if (lineIndex == maxLines - 1 && remaining.length() > 0)
+            lines[lineIndex] = fitWithEllipsis(lines[lineIndex], font, maxWidth);
+    }
 }
 
 static void drawArtwork(const String &artworkUrl, SpotifyPlaybackStatus status)
 {
-    displayFillRect(18, 55, 150, 150, primary);
-    displayFillRect(21, 58, 144, 144, artworkBackground);
+    displayFillRect(18, 32, 150, 150, primary);
+    displayFillRect(21, 35, 144, 144, artworkBackground);
     if (artworkUrl.length() > 0 && (status == PLAYBACK_PLAYING || status == PLAYBACK_PAUSED))
     {
-        displayJpg("/cover.jpg", 21, 58, 2);
+        displayJpg("/cover.jpg", 21, 35, 2);
         return;
     }
 
@@ -58,19 +81,40 @@ static void drawArtwork(const String &artworkUrl, SpotifyPlaybackStatus status)
         placeholder = "Unavailable";
     else if (status == PLAYBACK_LOADING)
         placeholder = "Loading...";
-    displayText(placeholder, 25, 118, DEFAULT_FONT, 136, artworkBackground, muted);
+    displayText(placeholder, 25, 95, DEFAULT_FONT, 136, artworkBackground, muted);
 }
 
-static void drawProgress(float progress)
+static void drawProgress(float progress, bool isPlaying)
 {
     if (progress < 0)
         progress = 0;
     if (progress > 1)
         progress = 1;
-    int filledWidth = (int)(progress * 500.0f);
-    displayFillRect(18, 220, 500, 6, artworkBackground);
+    uint16_t iconColor = isPlaying ? primary : warning;
+    if (isPlaying)
+    {
+        for (int row = 0; row < 17; ++row)
+        {
+            int rowWidth = row <= 8 ? row + 1 : 17 - row;
+            int width = rowWidth * 14 / 9;
+            if (width < 1)
+                width = 1;
+            displayFillRect(19 + 14 - width, 204 + row, width, 1, iconColor);
+        }
+    }
+    else
+    {
+        displayFillRect(19, 205, 4, 15, iconColor);
+        displayFillRect(27, 205, 4, 15, iconColor);
+    }
+
+    const int barX = 44;
+    const int barY = 211;
+    const int barWidth = 474;
+    int filledWidth = (int)(progress * barWidth);
+    displayFillRect(barX, barY, barWidth, 6, artworkBackground);
     if (filledWidth > 0)
-        displayFillRect(18, 220, filledWidth, 6, primary);
+        displayFillRect(barX, barY, filledWidth, 6, primary);
 }
 
 static void drawPlaybackScreen(SpotifyPlaybackStatus status, const String &title,
@@ -78,65 +122,46 @@ static void drawPlaybackScreen(SpotifyPlaybackStatus status, const String &title
                                float progress, bool isPlaying)
 {
     displayClear(background);
-    displayFillRect(0, 0, 536, 5, primary);
-    displayText("TINYTRACKSPOTTER", 18, 10, DEFAULT_FONT, 500, background, primary);
-
-    const char *stateLabel = "NOW PLAYING";
-    uint16_t stateColor = primary;
-    if (status == PLAYBACK_PAUSED || !isPlaying)
+    bool hasPlayback = status == PLAYBACK_PLAYING || status == PLAYBACK_PAUSED;
+    if (!hasPlayback)
     {
-        stateLabel = "PAUSED";
-        stateColor = warning;
+        displayFillRect(0, 0, 536, 5, primary);
+        displayText("TINYTRACKSPOTTER", 18, 10, DEFAULT_FONT, 500, background, primary);
+        const char *stateLabel = status == PLAYBACK_NOTHING ? "NO ACTIVE PLAYBACK" :
+                                 status == PLAYBACK_ERROR ? "PLAYBACK UNAVAILABLE" : "CHECKING PLAYBACK";
+        uint16_t stateColor = status == PLAYBACK_ERROR ? errorColor : muted;
+        displayText(stateLabel, 18, 35, DEFAULT_FONT, 500, background, stateColor);
     }
-    if (status == PLAYBACK_NOTHING)
-    {
-        stateLabel = "NO ACTIVE PLAYBACK";
-        stateColor = muted;
-    }
-    else if (status == PLAYBACK_ERROR)
-    {
-        stateLabel = "PLAYBACK UNAVAILABLE";
-        stateColor = errorColor;
-    }
-    else if (status == PLAYBACK_LOADING)
-    {
-        stateLabel = "CHECKING PLAYBACK";
-        stateColor = muted;
-    }
-    displayText(stateLabel, 190, 34, DEFAULT_FONT, 326, background, stateColor);
     drawArtwork(artworkUrl, status);
 
     if (status == PLAYBACK_NOTHING)
     {
-        displayText("Nothing is playing", 190, 73, &FreeSans18pt7b, 326, background, white);
-        displayText("Start playback on Spotify.", 190, 119, DEFAULT_FONT, 326, background, muted);
+        displayText("Nothing is playing", 190, 76, &FreeSans18pt7b, 326, background, white);
+        displayText("Start playback on Spotify.", 190, 120, DEFAULT_FONT, 326, background, muted);
         return;
     }
     if (status == PLAYBACK_ERROR)
     {
-        displayText("Playback unavailable", 190, 73, &FreeSans18pt7b, 326, background, white);
-        displayText("Retrying automatically.", 190, 119, DEFAULT_FONT, 326, background, muted);
+        displayText("Playback unavailable", 190, 76, &FreeSans18pt7b, 326, background, white);
+        displayText("Retrying automatically.", 190, 120, DEFAULT_FONT, 326, background, muted);
         return;
     }
     if (status == PLAYBACK_LOADING)
     {
-        displayText("Looking for playback...", 190, 73, &FreeSans18pt7b, 326, background, white);
+        displayText("Looking for playback...", 190, 76, &FreeSans18pt7b, 326, background, white);
         return;
     }
 
-    String titleLine1;
-    String titleLine2;
-    splitText(title, 27, titleLine1, titleLine2);
-    displayText(titleLine1, 190, 58, &FreeSans18pt7b, 326, background, white);
-    displayText(titleLine2, 190, 88, &FreeSans18pt7b, 326, background, white);
-
-    String subtitleLine1;
-    String subtitleLine2;
-    splitText(subtitle, 40, subtitleLine1, subtitleLine2);
-    displayText(subtitleLine1, 190, 128, DEFAULT_FONT, 326, background, muted);
-    displayText(subtitleLine2, 190, 151, DEFAULT_FONT, 326, background, muted);
-    displayText(isPlaying ? "Playing" : "Paused", 190, 179, DEFAULT_FONT, 326, background, stateColor);
-    drawProgress(progress);
+    String titleLines[3];
+    String subtitleLines[3];
+    wrapAtSpaces(title, &FreeSans18pt7b, 326, titleLines, 3);
+    wrapAtSpaces(subtitle, DEFAULT_FONT, 326, subtitleLines, 3);
+    for (int i = 0; i < 3; ++i)
+    {
+        displayText(titleLines[i], 190, 28 + i * 29, &FreeSans18pt7b, 326, background, white);
+        displayText(subtitleLines[i], 190, 119 + i * 22, DEFAULT_FONT, 326, background, muted);
+    }
+    drawProgress(progress, isPlaying);
 }
 
 void displaySpotifyAuthStatus(SpotifyAuthStatus status)
@@ -226,7 +251,7 @@ void updateScrean()
 
     if (progress != drawnProgress)
     {
-        drawProgress(progress);
+        drawProgress(progress, isPlaying);
         drawnProgress = progress;
     }
 }

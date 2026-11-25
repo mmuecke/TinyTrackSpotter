@@ -85,6 +85,13 @@ uint16_t displayText(String text, int x, int y, const GFXfont *font, int width, 
     return textHeight;
 }
 
+uint16_t displayTextWidth(String text, const GFXfont *font)
+{
+    TFT_eSprite sprite = TFT_eSprite(&tft);
+    sprite.setFreeFont(font);
+    return sprite.textWidth(text);
+}
+
 void displayJpg(String filename, int xpos, int ypos, int scale)
 {
     TJpgDec.setJpgScale(scale);
