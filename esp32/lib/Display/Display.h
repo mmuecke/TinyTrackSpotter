@@ -25,7 +25,15 @@ uint16_t displayText(
 uint16_t displayTextWidth(String text, const GFXfont *font = DEFAULT_FONT);
 void displayPrintLine(String text);
 void displayPrint(String text);
-void displayJpg(String filename, int xpos, int ypos, int scale = 1);
+enum DisplayJpgTaskResult
+{
+    DISPLAY_JPG_IDLE,
+    DISPLAY_JPG_PENDING,
+    DISPLAY_JPG_DRAWN,
+    DISPLAY_JPG_FAILED
+};
+bool displayQueueCoverDecode(int x, int y);
+DisplayJpgTaskResult displayProcessCoverDecode();
 void displayFillRect(int x, int y, int width, int height, uint16_t color);
 
 #endif

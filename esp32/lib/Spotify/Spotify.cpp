@@ -31,6 +31,7 @@ bool isPlaying = false;
 bool last_isPlaying = false;
 int lastUpdate = millis();
 static SpotifyAuthStatus spotifyAuthStatus = SPOTIFY_AUTH_NOT_CONFIGURED;
+static bool imageDownloadFailed = false;
 static bool authCheckRequested = true;
 static unsigned long lastAuthCheck = 0;
 static const unsigned long authCheckIntervalMs = 10000;
@@ -40,6 +41,15 @@ static bool refreshAccessToken();
 SpotifyPlaybackStatus getPlaybackStatus()
 {
     return playbackStatus;
+}
+
+SpotifyArtworkStatus getArtworkStatus()
+{
+    if (imageUrl.length() == 0)
+        return ARTWORK_NONE;
+    if (imageDownloadFailed)
+        return ARTWORK_ERROR;
+    return downloaded_imageUrl == imageUrl ? ARTWORK_READY : ARTWORK_LOADING;
 }
 
 static void clearPlaybackData(SpotifyPlaybackStatus status)
@@ -137,8 +147,8 @@ boolean hasImageUrlUpdate()
 
 String getImageUrl()
 {
-    last_ImageUrl = downloaded_imageUrl;
-    return downloaded_imageUrl;
+    last_ImageUrl = imageUrl;
+    return imageUrl;
 }
 
 boolean hasNameUpdate()
@@ -321,7 +331,10 @@ boolean getCurrentlyPlaying()
     }
 
     if (artworkUrl != imageUrl)
+    {
         downloaded_imageUrl = "";
+        imageDownloadFailed = false;
+    }
     name = trackTitle;
     subtitle = trackSubtitle;
     progress = trackProgress;
@@ -504,9 +517,15 @@ void updateCurrentPlaying()
             {
                 Serial.println("Downloading cover art");
                 if (downloadImage())
+                {
                     downloaded_imageUrl = imageUrl;
+                    imageDownloadFailed = false;
+                }
                 else
+                {
+                    imageDownloadFailed = true;
                     removeCoverImage();
+                }
             }
             else
             {

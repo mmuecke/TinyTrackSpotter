@@ -22,12 +22,21 @@ enum SpotifyPlaybackStatus
     PLAYBACK_ERROR
 };
 
+enum SpotifyArtworkStatus
+{
+    ARTWORK_NONE,
+    ARTWORK_LOADING,
+    ARTWORK_READY,
+    ARTWORK_ERROR
+};
+
 SpotifyAuthStatus getSpotifyAuthStatus();
 const char *getSpotifyAuthStatusName();
 void checkSpotifyAuthentication();
 void updateSpotifyAuthentication();
 void spotifyAuthSettingsChanged();
 SpotifyPlaybackStatus getPlaybackStatus();
+SpotifyArtworkStatus getArtworkStatus();
 
 boolean getHasData();
 

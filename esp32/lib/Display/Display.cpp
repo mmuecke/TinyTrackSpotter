@@ -6,6 +6,89 @@
 #include "LittleFS.h"
 // #include <TFT_eFEX.h>
 #include <TJpg_Decoder.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
+
+bool pushImage(int16_t x, int16_t y, uint16_t w, uint16_t h, uint16_t *data);
+
+static const int COVER_SIZE = 160;
+static const size_t MAX_COVER_JPEG_BYTES = 192 * 1024;
+static uint16_t coverPixels[COVER_SIZE * COVER_SIZE];
+static uint16_t coverWidth = 0;
+static uint16_t coverHeight = 0;
+static int coverX = 0;
+static int coverY = 0;
+static volatile int coverDecodeState = 0; // 0 idle, 1 decoding, 2 ready, 3 failed
+static volatile bool coverDecodeBoundsError = false;
+
+static bool captureCoverBlock(int16_t x, int16_t y, uint16_t w, uint16_t h, uint16_t *data)
+{
+    if (x < 0 || y < 0 || x + w > coverWidth || y + h > coverHeight ||
+        x + w > COVER_SIZE || y + h > COVER_SIZE)
+    {
+        coverDecodeBoundsError = true;
+        return false;
+    }
+    for (uint16_t row = 0; row < h; ++row)
+        memcpy(coverPixels + (y + row) * coverWidth + x, data + row * w, w * sizeof(uint16_t));
+    return true;
+}
+
+static void coverDecodeTask(void *)
+{
+    bool ok = false;
+    uint8_t *jpeg = nullptr;
+    File file;
+    if (LittleFS.begin())
+    {
+        file = LittleFS.open("/cover.jpg", "r");
+        if (file && file.size() > 0 && file.size() <= MAX_COVER_JPEG_BYTES)
+        {
+            size_t jpegSize = file.size();
+            jpeg = (uint8_t *)malloc(jpegSize);
+            if (jpeg && file.read(jpeg, jpegSize) == jpegSize)
+            {
+                file.close();
+                LittleFS.end();
+                uint16_t sourceWidth = 0, sourceHeight = 0;
+                if (TJpgDec.getJpgSize(&sourceWidth, &sourceHeight, jpeg, jpegSize) == JDR_OK)
+                {
+                    int scale = 1;
+                    while ((sourceWidth + scale - 1) / scale > COVER_SIZE ||
+                           (sourceHeight + scale - 1) / scale > COVER_SIZE)
+                        scale *= 2;
+                    if (scale <= 8)
+                    {
+                        coverWidth = (sourceWidth + scale - 1) / scale;
+                        coverHeight = (sourceHeight + scale - 1) / scale;
+                        memset(coverPixels, 0, sizeof(coverPixels));
+                        coverDecodeBoundsError = false;
+                        TJpgDec.setJpgScale(scale);
+                        TJpgDec.setSwapBytes(true);
+                        TJpgDec.setCallback(captureCoverBlock);
+                        bool decoded = TJpgDec.drawJpg(0, 0, jpeg, jpegSize) == JDR_OK;
+                        TJpgDec.setCallback(pushImage);
+                        ok = decoded && !coverDecodeBoundsError;
+                    }
+                }
+            }
+            else
+            {
+                file.close();
+                LittleFS.end();
+            }
+        }
+        else
+        {
+            if (file)
+                file.close();
+            LittleFS.end();
+        }
+    }
+    free(jpeg);
+    coverDecodeState = ok ? 2 : 3;
+    vTaskDelete(nullptr);
+}
 
 TFT_eSPI tft = TFT_eSPI();
 
@@ -92,24 +175,48 @@ uint16_t displayTextWidth(String text, const GFXfont *font)
     return sprite.textWidth(text);
 }
 
-void displayJpg(String filename, int xpos, int ypos, int scale)
+bool displayQueueCoverDecode(int x, int y)
 {
-    TJpgDec.setJpgScale(scale);
-    Serial.println("!!!!!!!! Displaying jpg");
-    if (!LittleFS.begin())
+    if (coverDecodeState != 0)
+        return false;
+    coverX = x;
+    coverY = y;
+    coverDecodeState = 1;
+    if (xTaskCreatePinnedToCore(coverDecodeTask, "cover-decode", 8192, nullptr, 1, nullptr, 0) != pdPASS)
     {
-        Serial.println("Error mounting the file system");
-        return;
+        coverDecodeState = 3;
+        return false;
     }
-    TJpgDec.drawFsJpg(xpos, ypos, filename, LittleFS);
-    // TFT_eSprite sprite = TFT_eSprite(&tft);
-    // sprite.drawJpgFile(LittleFS, filename, xpos, ypos);
-    // TFT_eFEX fex = TFT_eFEX(&tft);
-    // fex.setSwapBytes(1);
-    // fex.drawJpgFile(LittleFS, filename.c_str(), 0, 0);
-    // Serial.println(fex.getWriteError());
-    // lcd_PushColors(xpos, ypos, 300 + ypos, 300 + ypos, (uint16_t *)&fex);
-    Serial.println("!!!!!!!! Displayed jpg");
+    return true;
+}
+
+DisplayJpgTaskResult displayProcessCoverDecode()
+{
+    if (coverDecodeState == 1)
+        return DISPLAY_JPG_PENDING;
+    if (coverDecodeState == 2)
+    {
+        // Keep every transfer inside the 160x160 artwork tile. A malformed or
+        // unexpected JPEG size must never let the LCD address window reach text.
+        if (coverWidth == 0 || coverHeight == 0 || coverWidth > COVER_SIZE || coverHeight > COVER_SIZE)
+        {
+            coverDecodeState = 0;
+            return DISPLAY_JPG_FAILED;
+        }
+        int centeredX = coverX + (COVER_SIZE - coverWidth) / 2;
+        int centeredY = coverY + (COVER_SIZE - coverHeight) / 2;
+        for (uint16_t row = 0; row < coverHeight; ++row)
+            lcd_PushColors(centeredX, centeredY + row, coverWidth, 1,
+                           coverPixels + row * coverWidth);
+        coverDecodeState = 0;
+        return DISPLAY_JPG_DRAWN;
+    }
+    if (coverDecodeState == 3)
+    {
+        coverDecodeState = 0;
+        return DISPLAY_JPG_FAILED;
+    }
+    return DISPLAY_JPG_IDLE;
 }
 
 int printX = X_PADDING;

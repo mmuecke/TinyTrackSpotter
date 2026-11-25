@@ -14,6 +14,8 @@ static bool playbackScreenDrawn = false;
 static String drawnTitle = "";
 static String drawnSubtitle = "";
 static String drawnArtworkUrl = "";
+static String queuedArtworkUrl = "";
+static String failedArtworkUrl = "";
 static float drawnProgress = -1;
 static SpotifyPlaybackStatus drawnPlaybackStatus = PLAYBACK_LOADING;
 static bool drawnIsPlaying = false;
@@ -64,24 +66,123 @@ static void wrapAtSpaces(const String &text, const GFXfont *font, int maxWidth, 
     }
 }
 
-static void drawArtwork(const String &artworkUrl, SpotifyPlaybackStatus status)
+static void drawArtworkPlaceholder(const char *label)
 {
     displayFillRect(12, 23, 160, 160, primary);
     displayFillRect(15, 26, 154, 154, artworkBackground);
-    if (artworkUrl.length() > 0 && (status == PLAYBACK_PLAYING || status == PLAYBACK_PAUSED))
+    // A small, calm music mark gives the empty tile some structure while art loads.
+    displayFillRect(76, 70, 8, 21, primary);
+    displayFillRect(88, 61, 8, 30, primary);
+    displayFillRect(100, 75, 8, 16, primary);
+    displayFillRect(63, 98, 58, 2, muted);
+    if (label && label[0])
     {
-        displayJpg("/cover.jpg", 15, 26, 4);
+        int labelWidth = displayTextWidth(label, DEFAULT_FONT);
+        int labelX = 15 + max(0, (154 - labelWidth) / 2);
+        displayText(label, labelX, 119, DEFAULT_FONT, min(154, labelWidth + 2), artworkBackground, muted);
+    }
+}
+
+static void drawArtwork(const String &artworkUrl, SpotifyPlaybackStatus status)
+{
+    if (artworkUrl.length() && (status == PLAYBACK_PLAYING || status == PLAYBACK_PAUSED))
+    {
+        drawArtworkPlaceholder(getArtworkStatus() == ARTWORK_ERROR ? "Cover unavailable" : "Loading cover...");
+        return;
+    }
+    const char *label = "No cover art";
+    if (status == PLAYBACK_NOTHING) label = "No playback";
+    else if (status == PLAYBACK_ERROR) label = "Unavailable";
+    else if (status == PLAYBACK_LOADING) label = "Looking...";
+    drawArtworkPlaceholder(label);
+}
+
+static void drawArtworkText(const String &title, const String &subtitle)
+{
+    displayFillRect(185, 8, 343, 198, background);
+    String titleLines[3];
+    String subtitleLines[3];
+    wrapAtSpaces(title, &FreeSans18pt7b, 326, titleLines, 3);
+    wrapAtSpaces(subtitle, DEFAULT_FONT, 326, subtitleLines, 3);
+    int titleY = 22;
+    for (int i = 0; i < 3; ++i)
+    {
+        if (titleLines[i].length() == 0) continue;
+        uint16_t height = displayText(titleLines[i], 190, titleY, &FreeSans18pt7b, 326, background, white);
+        Serial.printf("Screen title line %d, y=%d, width=%u: '%s'\n", i + 1, titleY,
+                      (unsigned)displayTextWidth(titleLines[i], &FreeSans18pt7b), titleLines[i].c_str());
+        titleY += height + 4;
+    }
+    int subtitleY = max(107, titleY + 6);
+    for (int i = 0; i < 3; ++i)
+    {
+        if (subtitleLines[i].length() == 0) continue;
+        uint16_t height = displayText(subtitleLines[i], 190, subtitleY, DEFAULT_FONT, 326, background, muted);
+        Serial.printf("Screen artist/show line %d, y=%d, width=%u: '%s'\n", i + 1, subtitleY,
+                      (unsigned)displayTextWidth(subtitleLines[i], DEFAULT_FONT), subtitleLines[i].c_str());
+        subtitleY += height + 2;
+    }
+}
+
+static void updateArtwork(const String &url, SpotifyPlaybackStatus status)
+{
+    DisplayJpgTaskResult result = displayProcessCoverDecode();
+    if (result == DISPLAY_JPG_DRAWN)
+    {
+        drawnArtworkUrl = queuedArtworkUrl;
+        failedArtworkUrl = "";
+        queuedArtworkUrl = "";
+        Serial.printf("Cover decode complete: '%s'\n", drawnArtworkUrl.c_str());
+    }
+    else if (result == DISPLAY_JPG_FAILED)
+    {
+        failedArtworkUrl = queuedArtworkUrl;
+        queuedArtworkUrl = "";
+        Serial.printf("Cover decode failed: '%s'\n", failedArtworkUrl.c_str());
+        if (failedArtworkUrl == url)
+            drawArtworkPlaceholder("Cover unavailable");
+    }
+
+    bool hasPlayback = status == PLAYBACK_PLAYING || status == PLAYBACK_PAUSED;
+    if (!hasPlayback || url.length() == 0)
+    {
+        if (drawnArtworkUrl.length() || queuedArtworkUrl.length())
+        {
+            drawnArtworkUrl = "";
+            queuedArtworkUrl = "";
+            failedArtworkUrl = "";
+            drawArtwork(url, status);
+        }
         return;
     }
 
-    const char *placeholder = "No cover art";
-    if (status == PLAYBACK_NOTHING)
-        placeholder = "No playback";
-    else if (status == PLAYBACK_ERROR)
-        placeholder = "Unavailable";
-    else if (status == PLAYBACK_LOADING)
-        placeholder = "Loading...";
-    displayText(placeholder, 19, 91, DEFAULT_FONT, 146, artworkBackground, muted);
+    if (url != drawnArtworkUrl && url != queuedArtworkUrl && url != failedArtworkUrl)
+    {
+        drawArtworkPlaceholder(getArtworkStatus() == ARTWORK_READY ? "Preparing cover..." : "Loading cover...");
+    }
+
+    if (url == drawnArtworkUrl)
+        return;
+
+    SpotifyArtworkStatus artworkStatus = getArtworkStatus();
+    if (artworkStatus == ARTWORK_ERROR)
+    {
+        failedArtworkUrl = url;
+        drawArtworkPlaceholder("Cover unavailable");
+    }
+    else if (artworkStatus == ARTWORK_READY && queuedArtworkUrl.length() == 0 && url != failedArtworkUrl)
+    {
+        if (displayQueueCoverDecode(15, 26))
+        {
+            queuedArtworkUrl = url;
+            drawArtworkPlaceholder("Preparing cover...");
+        }
+        else
+        {
+            failedArtworkUrl = url;
+            drawArtworkPlaceholder("Cover unavailable");
+        }
+    }
 }
 
 static void drawProgress(float progress, bool isPlaying)
@@ -152,31 +253,7 @@ static void drawPlaybackScreen(SpotifyPlaybackStatus status, const String &title
         return;
     }
 
-    String titleLines[3];
-    String subtitleLines[3];
-    wrapAtSpaces(title, &FreeSans18pt7b, 326, titleLines, 3);
-    wrapAtSpaces(subtitle, DEFAULT_FONT, 326, subtitleLines, 3);
-    int titleY = 22;
-    for (int i = 0; i < 3; ++i)
-    {
-        if (titleLines[i].length() == 0)
-            continue;
-        uint16_t height = displayText(titleLines[i], 190, titleY, &FreeSans18pt7b, 326, background, white);
-        Serial.printf("Screen title line %d, y=%d, width=%u: '%s'\n", i + 1, titleY,
-                      (unsigned)displayTextWidth(titleLines[i], &FreeSans18pt7b), titleLines[i].c_str());
-        titleY += height + 4;
-    }
-
-    int subtitleY = max(107, titleY + 6);
-    for (int i = 0; i < 3; ++i)
-    {
-        if (subtitleLines[i].length() == 0)
-            continue;
-        uint16_t height = displayText(subtitleLines[i], 190, subtitleY, DEFAULT_FONT, 326, background, muted);
-        Serial.printf("Screen artist/show line %d, y=%d, width=%u: '%s'\n", i + 1, subtitleY,
-                      (unsigned)displayTextWidth(subtitleLines[i], DEFAULT_FONT), subtitleLines[i].c_str());
-        subtitleY += height + 2;
-    }
+    drawArtworkText(title, subtitle);
     drawProgress(progress, isPlaying);
 }
 
@@ -249,20 +326,33 @@ void updateScrean()
     float progress = getProgress();
     bool isPlaying = getIsPlaing();
 
-    bool contentChanged = !playbackScreenDrawn || status != drawnPlaybackStatus ||
-                          title != drawnTitle || subtitle != drawnSubtitle ||
-                          artworkUrl != drawnArtworkUrl || isPlaying != drawnIsPlaying;
-    if (contentChanged)
+    bool screenModeChanged = !playbackScreenDrawn || status != drawnPlaybackStatus;
+    if (screenModeChanged)
     {
         drawPlaybackScreen(status, title, subtitle, artworkUrl, progress, isPlaying);
         playbackScreenDrawn = true;
         drawnPlaybackStatus = status;
         drawnTitle = title;
         drawnSubtitle = subtitle;
-        drawnArtworkUrl = artworkUrl;
+        drawnArtworkUrl = "";
         drawnIsPlaying = isPlaying;
         drawnProgress = progress;
-        return;
+    }
+
+    bool hasPlayback = status == PLAYBACK_PLAYING || status == PLAYBACK_PAUSED;
+    if (hasPlayback && (title != drawnTitle || subtitle != drawnSubtitle))
+        drawArtworkText(title, subtitle);
+    updateArtwork(artworkUrl, status);
+    if (!hasPlayback && artworkUrl != drawnArtworkUrl)
+        drawnArtworkUrl = artworkUrl;
+    drawnTitle = title;
+    drawnSubtitle = subtitle;
+
+    if (isPlaying != drawnIsPlaying)
+    {
+        drawProgress(progress, isPlaying);
+        drawnIsPlaying = isPlaying;
+        drawnProgress = progress;
     }
 
     if (progress != drawnProgress)
