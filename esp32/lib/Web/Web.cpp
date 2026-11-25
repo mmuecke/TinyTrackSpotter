@@ -3,6 +3,7 @@
 #include "LittleFS.h"
 #include <ESPAsyncWebServer.h>
 #include "Settings.h"
+#include "Spotify.h"
 // Port des Webservers auf 80 setzen
 AsyncWebServer server(80);
 
@@ -44,6 +45,8 @@ void handelSetSettingsRequest(AsyncWebServerRequest *request)
         // request->send(500, "text/plain", "Internal Server Error: Failed to write setting");
         return;
     }
+    if (request->argName(zeroIndex) == "clientId" || request->argName(zeroIndex) == "clientSecret" || request->argName(zeroIndex) == "refreshToken")
+        spotifyAuthSettingsChanged();
     AsyncWebServerResponse *response = request->beginResponse(200, "text/plain", "OK");
     response->addHeader("Access-Control-Allow-Origin", "*");
     request->send(response);
@@ -83,6 +86,11 @@ bool initWebServer()
               { handelGetSettingsRequest(request); });
     server.on("/settings", HTTP_POST, [](AsyncWebServerRequest *request)
               { handelSetSettingsRequest(request); });
+    server.on("/auth/status", HTTP_GET, [](AsyncWebServerRequest *request)
+              {
+                  String body = "{\"status\":\"" + String(getSpotifyAuthStatusName()) + "\"}";
+                  request->send(200, "application/json", body);
+              });
     server.begin();
     return true;
 }

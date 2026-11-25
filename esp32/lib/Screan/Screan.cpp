@@ -7,6 +7,19 @@ uint16_t color = TFT_WHITE;
 uint16_t background = TFT_BLACK; // ((0x19 & 0xF8) << 8) | ((0x14 & 0xFC) << 3) | (0x14 >> 3);
 uint16_t primary = ((0x1D & 0xF8) << 8) | ((0xB9 & 0xFC) << 3) | (0x54 >> 3);
 bool isInitialized = false;
+void displaySpotifyAuthStatus(SpotifyAuthStatus status)
+{
+    const char *message = "Spotify setup required";
+    if (status == SPOTIFY_AUTH_CONNECTED)
+        message = "Spotify connected";
+    else if (status == SPOTIFY_AUTH_CONNECTION_ERROR)
+        message = "Spotify connection error";
+
+    displayClear(background);
+    displayText("TinyTrackSpotter", 12, 18, &FreeSans18pt7b, 512, background, color);
+    displayText(message, 12, 78, &FreeSans18pt7b, 512, background, color);
+}
+
 void initScrean()
 {
     displayClear(background);

@@ -4,6 +4,7 @@
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
 #include "LittleFS.h"
+#include <WiFi.h>
 
 enum SpotifyState
 {
@@ -28,6 +29,79 @@ float last_progress = 0;
 bool isPlaying = false;
 bool last_isPlaying = false;
 int lastUpdate = millis();
+static SpotifyAuthStatus spotifyAuthStatus = SPOTIFY_AUTH_NOT_CONFIGURED;
+static bool authCheckRequested = true;
+static unsigned long lastAuthCheck = 0;
+static const unsigned long authCheckIntervalMs = 10000;
+static bool refreshHadConnectionError = false;
+
+SpotifyAuthStatus getSpotifyAuthStatus()
+{
+    return spotifyAuthStatus;
+}
+
+const char *getSpotifyAuthStatusName()
+{
+    switch (spotifyAuthStatus)
+    {
+    case SPOTIFY_AUTH_NOT_CONFIGURED:
+        return "not_configured";
+    case SPOTIFY_AUTH_REQUIRED:
+        return "authentication_required";
+    case SPOTIFY_AUTH_CONNECTED:
+        return "connected";
+    case SPOTIFY_AUTH_CONNECTION_ERROR:
+        return "connection_error";
+    default:
+        return "connection_error";
+    }
+}
+
+void spotifyAuthSettingsChanged()
+{
+    authCheckRequested = true;
+    spotifyAuthStatus = SPOTIFY_AUTH_NOT_CONFIGURED;
+}
+
+void checkSpotifyAuthentication()
+{
+    String clientId = getSetting("clientId", true);
+    String clientSecret = getSetting("clientSecret", true);
+    String refreshToken = getSetting("refreshToken", true);
+    if (clientId.length() == 0 || clientSecret.length() == 0 || refreshToken.length() == 0)
+    {
+        spotifyAuthStatus = SPOTIFY_AUTH_NOT_CONFIGURED;
+        authCheckRequested = false;
+        return;
+    }
+    if (WiFi.status() != WL_CONNECTED)
+    {
+        spotifyAuthStatus = SPOTIFY_AUTH_CONNECTION_ERROR;
+        authCheckRequested = true;
+        return;
+    }
+
+    authCheckRequested = false;
+    lastAuthCheck = millis();
+    if (refreshAccessToken())
+        spotifyAuthStatus = SPOTIFY_AUTH_CONNECTED;
+    else
+        spotifyAuthStatus = refreshHadConnectionError ? SPOTIFY_AUTH_CONNECTION_ERROR : SPOTIFY_AUTH_REQUIRED;
+}
+
+void updateSpotifyAuthentication()
+{
+    if (WiFi.status() != WL_CONNECTED)
+    {
+        if (spotifyAuthStatus != SPOTIFY_AUTH_NOT_CONFIGURED)
+            spotifyAuthStatus = SPOTIFY_AUTH_CONNECTION_ERROR;
+        authCheckRequested = true;
+        return;
+    }
+
+    if (authCheckRequested || (spotifyAuthStatus == SPOTIFY_AUTH_CONNECTION_ERROR && millis() - lastAuthCheck >= authCheckIntervalMs))
+        checkSpotifyAuthentication();
+}
 
 boolean getHasData()
 {
@@ -105,6 +179,8 @@ boolean getCurrentlyPlaying()
         if (httpCode == 401)
         {
             Serial.println("Unauthorized, refreshing token");
+            spotifyAuthStatus = SPOTIFY_AUTH_REQUIRED;
+            authCheckRequested = true;
             return false;
         }
         if (httpCode == 204)
@@ -236,7 +312,7 @@ boolean getCurrentlyPlaying()
     return true;
 }
 
-void refreshAccessToken()
+bool refreshAccessToken()
 {
     String clientId = getSetting("clientId", true);
     String clientSecret = getSetting("clientSecret", true);
@@ -246,30 +322,40 @@ void refreshAccessToken()
     http.addHeader("Content-Type", "application/x-www-form-urlencoded"); // Specify the content-type header
     // http.addHeader("Authorization", "Basic " + clientId + ":" + clientSecret);  // Authorization header
 
+    if (clientId.length() == 0 || clientSecret.length() == 0 || refreshToken.length() == 0)
+    {
+        http.end();
+        spotifyAuthStatus = SPOTIFY_AUTH_NOT_CONFIGURED;
+        return false;
+    }
+
     String requestBody = "grant_type=refresh_token";
     requestBody += "&refresh_token=" + refreshToken;
     requestBody += "&client_id=" + clientId;
     requestBody += "&client_secret=" + clientSecret;
 
     int httpCode = http.POST(requestBody); // Make the HTTP request
+    refreshHadConnectionError = httpCode < 0 || httpCode == 429 || httpCode >= 500;
 
-    if (httpCode > 0)
+    bool refreshed = false;
+    if (httpCode == 200)
     {                                      // Check the returning code
         String payload = http.getString(); // Get the request response payload
 
         Serial.println("HTTP Code: " + String(httpCode)); // Log httpCode to console
-        Serial.println("Payload: " + payload);            // Log payload to console
-
+        Serial.println("Payload: " + payload);            // Log http response payload
         JsonDocument doc;
-        deserializeJson(doc, payload);
+        DeserializationError error = deserializeJson(doc, payload);
         JsonObject root = doc.as<JsonObject>(); // Convert the payload to JsonObject
 
         String accessToken = root["access_token"].as<String>();
-        trySetSetting("accessToken", accessToken, true);
+        refreshed = !error && accessToken.length() > 0 && trySetSetting("accessToken", accessToken, true);
     }
 
     http.end(); // Close connection
-                /* code */
+    if (!refreshed)
+        Serial.println("Spotify authentication check failed (HTTP " + String(httpCode) + ")");
+    return refreshed;
 }
 
 boolean downloadImage()
@@ -347,7 +433,10 @@ void updateCurrentPlaying()
         break;
     case REFRESHTOKEN:
         Serial.println("Refreshing token");
-        refreshAccessToken();
+        if (refreshAccessToken())
+            spotifyAuthStatus = SPOTIFY_AUTH_CONNECTED;
+        else
+            spotifyAuthStatus = refreshHadConnectionError ? SPOTIFY_AUTH_CONNECTION_ERROR : SPOTIFY_AUTH_REQUIRED;
         spotifyState = UPDATE;
         break;
     case WAIT:

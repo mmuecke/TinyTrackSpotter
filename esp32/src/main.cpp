@@ -12,6 +12,7 @@
 char const *WIFI_SSID = "FRITZ!Box 7530 GS";
 char const *WIFI_PASS = "07546095582494095943";
 char const *MDNS_NAME = "spotifyDisplay";
+SpotifyAuthStatus lastDisplayedAuthStatus = SPOTIFY_AUTH_NOT_CONFIGURED;
 
 // // Define an array with TFT colors
 // uint16_t tftColors[] = {
@@ -61,6 +62,9 @@ void setup()
     displayPrintLine("Initialized WiFi");
   }
 
+  checkSpotifyAuthentication();
+  lastDisplayedAuthStatus = getSpotifyAuthStatus();
+
   success = initWebServer();
   if (!success)
   {
@@ -80,12 +84,19 @@ void setup()
 
   // displayPrintLine("Initialization complete");
   Serial.println("Startup complete");
-  displayPrintLine("Startup complete");
+  displaySpotifyAuthStatus(lastDisplayedAuthStatus);
 }
 
 void loop()
 {
   updateWiFi();
+  updateSpotifyAuthentication();
+  SpotifyAuthStatus authStatus = getSpotifyAuthStatus();
+  if (authStatus != lastDisplayedAuthStatus)
+  {
+    lastDisplayedAuthStatus = authStatus;
+    displaySpotifyAuthStatus(authStatus);
+  }
   // if (hasWiFiStatusUpdate() && getWiFiStatus())
   // {
   //   displayPrintLine(String(MDNS_NAME) + ".local");
