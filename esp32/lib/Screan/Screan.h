@@ -7,4 +7,5 @@
 void initScrean();
 void updateScrean();
 void displaySpotifyAuthStatus(SpotifyAuthStatus status);
+void updateWifiIndicator();
 #endif

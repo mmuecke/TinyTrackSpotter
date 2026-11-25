@@ -131,7 +131,11 @@ void setup()
 
   // displayPrintLine("Initialization complete");
   Serial.println("Startup complete");
-  displaySpotifyAuthStatus(lastDisplayedAuthStatus);
+  if (lastDisplayedAuthStatus == SPOTIFY_AUTH_CONNECTED)
+    updateScrean();
+  else
+    displaySpotifyAuthStatus(lastDisplayedAuthStatus);
+  updateWifiIndicator();
 }
 
 void loop()
@@ -144,10 +148,12 @@ void loop()
   if (authStatus != lastDisplayedAuthStatus)
   {
     lastDisplayedAuthStatus = authStatus;
-    displaySpotifyAuthStatus(authStatus);
+    if (authStatus != SPOTIFY_AUTH_CONNECTED)
+      displaySpotifyAuthStatus(authStatus);
   }
   if (authStatus == SPOTIFY_AUTH_CONNECTED)
     updateScrean();
+  updateWifiIndicator();
   // if (hasWiFiStatusUpdate() && getWiFiStatus())
   // {
   //   displayPrintLine(String(MDNS_NAME) + ".local");

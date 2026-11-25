@@ -12,6 +12,10 @@
 bool pushImage(int16_t x, int16_t y, uint16_t w, uint16_t h, uint16_t *data);
 
 static const int COVER_SIZE = 160;
+static const int DISPLAY_WIDTH = 536;
+static const int DISPLAY_HEIGHT = 240;
+static const int CLEAR_CHUNK_ROWS = 16;
+static uint16_t clearBuffer[DISPLAY_WIDTH * CLEAR_CHUNK_ROWS];
 static const size_t MAX_COVER_JPEG_BYTES = 192 * 1024;
 static uint16_t coverPixels[COVER_SIZE * COVER_SIZE];
 static uint16_t coverWidth = 0;
@@ -162,12 +166,10 @@ bool initDisplay()
 
 void displayClear(uint16_t color)
 {
-    TFT_eSprite sprite = TFT_eSprite(&tft);
-    sprite.setSwapBytes(1);                                          // Swap the byte order for pushImage() and pushPixels() functions
-    sprite.createSprite(536, 240);                                   // Create a sprite that covers the entire display
-    sprite.fillSprite(color);                                        // Fill the sprite with the specified color
-    lcd_PushColors(0, 0, 536, 240, (uint16_t *)sprite.getPointer()); // Push the sprite to the display
-    sprite.deleteSprite();                                           // Delete the sprite to free up memory
+    for (size_t i = 0; i < sizeof(clearBuffer) / sizeof(clearBuffer[0]); ++i)
+        clearBuffer[i] = color;
+    for (int y = 0; y < DISPLAY_HEIGHT; y += CLEAR_CHUNK_ROWS)
+        lcd_PushColors(0, y, DISPLAY_WIDTH, CLEAR_CHUNK_ROWS, clearBuffer);
 }
 
 void displayFillRect(int x, int y, int width, int height, uint16_t color)

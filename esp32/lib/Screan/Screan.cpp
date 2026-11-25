@@ -3,7 +3,7 @@
 #include <Display.h>
 
 static const uint16_t white = TFT_WHITE;
-static const uint16_t background = ((7 & 0xF8) << 8) | ((15 & 0xFC) << 3) | (12 >> 3);
+static const uint16_t background = TFT_BLACK;
 static const uint16_t primary = ((0x1D & 0xF8) << 8) | ((0xB9 & 0xFC) << 3) | (0x54 >> 3);
 static const uint16_t muted = ((0xA8 & 0xF8) << 8) | ((0xB8 & 0xFC) << 3) | (0xAE >> 3);
 static const uint16_t warning = TFT_YELLOW;
@@ -21,6 +21,52 @@ static SpotifyPlaybackStatus drawnPlaybackStatus = PLAYBACK_LOADING;
 static bool drawnIsPlaying = false;
 static const int progressBarWidth = 474;
 static int drawnBarFillPixels = -1;
+static int displayedWifiState = -1;
+
+static void drawWifiIcon(bool connected)
+{
+    const int x = 505;
+    const int y = 4;
+    const uint16_t arcColor = connected ? TFT_GREEN : muted;
+    displayFillRect(x, y, 24, 18, background);
+
+    // Pixel-stepped arcs and a center dot form a compact Wi-Fi glyph.
+    displayFillRect(x + 9, y, 6, 2, arcColor);
+    displayFillRect(x + 6, y + 2, 2, 2, arcColor);
+    displayFillRect(x + 16, y + 2, 2, 2, arcColor);
+    displayFillRect(x + 3, y + 4, 2, 2, arcColor);
+    displayFillRect(x + 19, y + 4, 2, 2, arcColor);
+    displayFillRect(x + 1, y + 6, 2, 2, arcColor);
+    displayFillRect(x + 21, y + 6, 2, 2, arcColor);
+    displayFillRect(x + 10, y + 7, 4, 2, arcColor);
+    displayFillRect(x + 7, y + 9, 2, 2, arcColor);
+    displayFillRect(x + 15, y + 9, 2, 2, arcColor);
+    displayFillRect(x + 10, y + 11, 4, 2, arcColor);
+    displayFillRect(x + 11, y + 15, 3, 3, connected ? TFT_GREEN : TFT_RED);
+
+    if (!connected)
+    {
+        displayFillRect(x + 5, y + 3, 3, 3, TFT_RED);
+        displayFillRect(x + 8, y + 6, 3, 3, TFT_RED);
+        displayFillRect(x + 11, y + 9, 3, 3, TFT_RED);
+        displayFillRect(x + 14, y + 12, 3, 3, TFT_RED);
+    }
+}
+
+void updateWifiIndicator()
+{
+    bool connected = getWiFiStatus();
+    int currentState = connected ? 1 : 0;
+    if (currentState == displayedWifiState)
+        return;
+    drawWifiIcon(connected);
+    displayedWifiState = currentState;
+}
+
+static void invalidateWifiIndicator()
+{
+    displayedWifiState = -1;
+}
 
 static int progressPixelWidth(float progress)
 {
@@ -343,8 +389,9 @@ static void drawPlaybackScreen(SpotifyPlaybackStatus status, const String &title
                                float progress, bool isPlaying)
 {
     displayClear(background);
+    invalidateWifiIndicator();
     bool hasPlayback = status == PLAYBACK_PLAYING || status == PLAYBACK_PAUSED;
-    if (!hasPlayback)
+    if (!hasPlayback && status != PLAYBACK_LOADING)
     {
         displayFillRect(0, 0, 536, 5, primary);
         displayText("TINYTRACKSPOTTER", 18, 10, DEFAULT_FONT, 500, background, primary);
@@ -381,8 +428,9 @@ void displaySpotifyAuthStatus(SpotifyAuthStatus status)
 {
     playbackScreenDrawn = false;
     displayClear(background);
+    invalidateWifiIndicator();
     displayFillRect(0, 0, 536, 5, primary);
-    displayText("TINYTRACKSPOTTER", 18, 15, DEFAULT_FONT, 500, background, primary);
+    displayText("TINYTRACKSPOTTER", 18, 15, DEFAULT_FONT, 455, background, primary);
 
     String message = "Spotify setup required";
     uint16_t messageColor = white;
@@ -432,6 +480,7 @@ void initScrean()
 {
     playbackScreenDrawn = false;
     displayClear(background);
+    invalidateWifiIndicator();
 }
 
 void updateScrean()
