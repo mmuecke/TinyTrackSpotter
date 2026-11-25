@@ -728,6 +728,7 @@ static void executeSpotifyControl(SpotifyControlCommand command)
             return;
         }
         http.addHeader("Authorization", "Bearer " + accessToken);
+        http.addHeader("Content-Length", "0");
         int httpCode = http.sendRequest(method.c_str());
         http.end();
 
@@ -735,6 +736,7 @@ static void executeSpotifyControl(SpotifyControlCommand command)
         {
             Serial.printf("Spotify control succeeded: %s\n", commandName);
             spotifyState = UPDATE;
+            lastUpdate = millis();
             return;
         }
         if (httpCode == 401 && attempt == 0 && refreshAccessToken())
