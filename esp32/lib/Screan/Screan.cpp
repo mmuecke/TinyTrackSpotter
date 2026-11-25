@@ -16,6 +16,7 @@ static String drawnSubtitle = "";
 static String drawnArtworkUrl = "";
 static String queuedArtworkUrl = "";
 static String failedArtworkUrl = "";
+static String placeholderArtworkUrl = "";
 static SpotifyPlaybackStatus drawnPlaybackStatus = PLAYBACK_LOADING;
 static bool drawnIsPlaying = false;
 static const int progressBarWidth = 474;
@@ -160,12 +161,16 @@ static void drawArtwork(const String &artworkUrl, SpotifyPlaybackStatus status)
 {
     if (status == PLAYBACK_PLAYING || status == PLAYBACK_PAUSED)
     {
-        ArtworkPlaceholderIcon icon = artworkUrl.length() == 0 || getArtworkStatus() == ARTWORK_ERROR
-                                          ? ARTWORK_ICON_NOT_LOADED
-                                          : ARTWORK_ICON_LOADING;
+        ArtworkPlaceholderIcon icon = ARTWORK_ICON_LOADING;
+        if (artworkUrl.length() == 0 || getArtworkStatus() == ARTWORK_ERROR)
+            icon = ARTWORK_ICON_NOT_LOADED;
+        else if (artworkUrl == failedArtworkUrl)
+            icon = ARTWORK_ICON_RESIZE_ERROR;
+        placeholderArtworkUrl = artworkUrl;
         drawArtworkPlaceholder("", icon);
         return;
     }
+    placeholderArtworkUrl = "";
     const char *label = "No cover art";
     if (status == PLAYBACK_NOTHING) label = "No playback";
     else if (status == PLAYBACK_ERROR) label = "Unavailable";
@@ -207,12 +212,14 @@ static void updateArtwork(const String &url, SpotifyPlaybackStatus status)
     {
         drawnArtworkUrl = queuedArtworkUrl;
         failedArtworkUrl = "";
+        placeholderArtworkUrl = "";
         queuedArtworkUrl = "";
         Serial.printf("Cover decode complete: '%s'\n", drawnArtworkUrl.c_str());
     }
     else if (result == DISPLAY_JPG_FAILED)
     {
         failedArtworkUrl = queuedArtworkUrl;
+        placeholderArtworkUrl = failedArtworkUrl;
         queuedArtworkUrl = "";
         Serial.printf("ERROR: Cover resize/decode failed for image URL: %s\n", failedArtworkUrl.c_str());
         if (failedArtworkUrl == url)
@@ -222,7 +229,7 @@ static void updateArtwork(const String &url, SpotifyPlaybackStatus status)
     bool hasPlayback = status == PLAYBACK_PLAYING || status == PLAYBACK_PAUSED;
     if (!hasPlayback || url.length() == 0)
     {
-        if (drawnArtworkUrl.length() || queuedArtworkUrl.length())
+        if (drawnArtworkUrl.length() || queuedArtworkUrl.length() || placeholderArtworkUrl.length())
         {
             drawnArtworkUrl = "";
             queuedArtworkUrl = "";
@@ -232,31 +239,47 @@ static void updateArtwork(const String &url, SpotifyPlaybackStatus status)
         return;
     }
 
+    SpotifyArtworkStatus artworkStatus = getArtworkStatus();
     if (url != drawnArtworkUrl && url != queuedArtworkUrl && url != failedArtworkUrl)
     {
-        drawArtworkPlaceholder("", ARTWORK_ICON_LOADING);
+        if (placeholderArtworkUrl != url)
+        {
+            drawArtworkPlaceholder("", artworkStatus == ARTWORK_ERROR
+                                           ? ARTWORK_ICON_NOT_LOADED
+                                           : ARTWORK_ICON_LOADING);
+            placeholderArtworkUrl = url;
+        }
     }
 
     if (url == drawnArtworkUrl)
         return;
 
-    SpotifyArtworkStatus artworkStatus = getArtworkStatus();
     if (artworkStatus == ARTWORK_ERROR)
     {
-        failedArtworkUrl = url;
-        drawArtworkPlaceholder("", ARTWORK_ICON_NOT_LOADED);
+        if (failedArtworkUrl != url)
+            failedArtworkUrl = url;
+        if (placeholderArtworkUrl != url)
+        {
+            drawArtworkPlaceholder("", ARTWORK_ICON_NOT_LOADED);
+            placeholderArtworkUrl = url;
+        }
     }
     else if (artworkStatus == ARTWORK_READY && queuedArtworkUrl.length() == 0 && url != failedArtworkUrl)
     {
         if (displayQueueCoverDecode(12, 23))
         {
             queuedArtworkUrl = url;
-            drawArtworkPlaceholder("", ARTWORK_ICON_LOADING);
+            if (placeholderArtworkUrl != url)
+            {
+                drawArtworkPlaceholder("", ARTWORK_ICON_LOADING);
+                placeholderArtworkUrl = url;
+            }
         }
         else
         {
             failedArtworkUrl = url;
             drawArtworkPlaceholder("", ARTWORK_ICON_RESIZE_ERROR);
+            placeholderArtworkUrl = url;
         }
     }
 }

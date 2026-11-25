@@ -5,6 +5,9 @@
 #include <ArduinoJson.h>
 #include "LittleFS.h"
 #include <WiFi.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
+#include <freertos/semphr.h>
 
 enum SpotifyState
 {
@@ -17,7 +20,7 @@ enum SpotifyState
 
 bool hasData = false;
 static SpotifyPlaybackStatus playbackStatus = PLAYBACK_LOADING;
-SpotifyState spotifyState = INIT;
+volatile SpotifyState spotifyState = INIT;
 String imageUrl = "";
 String downloaded_imageUrl = "";
 String last_ImageUrl = "";
@@ -30,33 +33,59 @@ float last_progress = 0;
 static float progressMs = 0;
 static float durationMs = 0;
 static unsigned long progressSampleAt = 0;
+static String playbackItemId = "";
+static uint64_t playbackTimestamp = 0;
 bool isPlaying = false;
 bool last_isPlaying = false;
-int lastUpdate = millis();
-static SpotifyAuthStatus spotifyAuthStatus = SPOTIFY_AUTH_NOT_CONFIGURED;
+volatile int lastUpdate = millis();
+static volatile SpotifyAuthStatus spotifyAuthStatus = SPOTIFY_AUTH_NOT_CONFIGURED;
 static bool imageDownloadFailed = false;
-static bool authCheckRequested = true;
+static volatile bool authCheckRequested = true;
 static unsigned long lastAuthCheck = 0;
 static const unsigned long authCheckIntervalMs = 10000;
 static bool refreshHadConnectionError = false;
 static bool refreshAccessToken();
+static SemaphoreHandle_t playbackMutex = nullptr;
+static bool playbackWorkerStarted = false;
+static bool playbackWorkerStartAttempted = false;
+
+static void lockPlaybackData()
+{
+    if (playbackMutex)
+        xSemaphoreTake(playbackMutex, portMAX_DELAY);
+}
+
+static void unlockPlaybackData()
+{
+    if (playbackMutex)
+        xSemaphoreGive(playbackMutex);
+}
 
 SpotifyPlaybackStatus getPlaybackStatus()
 {
-    return playbackStatus;
+    lockPlaybackData();
+    SpotifyPlaybackStatus status = playbackStatus;
+    unlockPlaybackData();
+    return status;
 }
 
 SpotifyArtworkStatus getArtworkStatus()
 {
+    lockPlaybackData();
+    SpotifyArtworkStatus status;
     if (imageUrl.length() == 0)
-        return ARTWORK_NONE;
-    if (imageDownloadFailed)
-        return ARTWORK_ERROR;
-    return downloaded_imageUrl == imageUrl ? ARTWORK_READY : ARTWORK_LOADING;
+        status = ARTWORK_NONE;
+    else if (imageDownloadFailed)
+        status = ARTWORK_ERROR;
+    else
+        status = downloaded_imageUrl == imageUrl ? ARTWORK_READY : ARTWORK_LOADING;
+    unlockPlaybackData();
+    return status;
 }
 
 static void clearPlaybackData(SpotifyPlaybackStatus status)
 {
+    lockPlaybackData();
     hasData = false;
     name = "";
     subtitle = "";
@@ -65,8 +94,11 @@ static void clearPlaybackData(SpotifyPlaybackStatus status)
     progressMs = 0;
     durationMs = 0;
     progressSampleAt = millis();
+    playbackItemId = "";
+    playbackTimestamp = 0;
     isPlaying = false;
     playbackStatus = status;
+    unlockPlaybackData();
 }
 
 SpotifyAuthStatus getSpotifyAuthStatus()
@@ -143,49 +175,74 @@ void updateSpotifyAuthentication()
 
 boolean getHasData()
 {
-    return hasData;
+    lockPlaybackData();
+    bool value = hasData;
+    unlockPlaybackData();
+    return value;
 }
 
 boolean hasImageUrlUpdate()
 {
-    return downloaded_imageUrl != last_ImageUrl;
+    lockPlaybackData();
+    bool changed = downloaded_imageUrl != last_ImageUrl;
+    unlockPlaybackData();
+    return changed;
 }
 
 String getImageUrl()
 {
+    lockPlaybackData();
     last_ImageUrl = imageUrl;
-    return imageUrl;
+    String value = imageUrl;
+    unlockPlaybackData();
+    return value;
 }
 
 boolean hasNameUpdate()
 {
-    return name != last_name;
+    lockPlaybackData();
+    bool changed = name != last_name;
+    unlockPlaybackData();
+    return changed;
 }
 
 String getName()
 {
+    lockPlaybackData();
     last_name = name;
-    return name;
+    String value = name;
+    unlockPlaybackData();
+    return value;
 }
 
 boolean hasSubtitleUpdate()
 {
-    return subtitle != last_subtitle;
+    lockPlaybackData();
+    bool changed = subtitle != last_subtitle;
+    unlockPlaybackData();
+    return changed;
 }
 
 String getSubtitle()
 {
+    lockPlaybackData();
     last_subtitle = subtitle;
-    return subtitle;
+    String value = subtitle;
+    unlockPlaybackData();
+    return value;
 }
 
 boolean hasProgressUpdate()
 {
-    return progress != last_progress;
+    lockPlaybackData();
+    bool changed = progress != last_progress;
+    unlockPlaybackData();
+    return changed;
 }
 
 float getProgress()
 {
+    lockPlaybackData();
     float currentProgress = progress;
     if (isPlaying && durationMs > 0)
     {
@@ -195,18 +252,25 @@ float getProgress()
         currentProgress = currentProgressMs / durationMs;
     }
     last_progress = currentProgress;
+    unlockPlaybackData();
     return currentProgress;
 }
 
 boolean hasIsPlayingUpdate()
 {
-    return isPlaying != last_isPlaying;
+    lockPlaybackData();
+    bool changed = isPlaying != last_isPlaying;
+    unlockPlaybackData();
+    return changed;
 }
 
 boolean getIsPlaing()
 {
+    lockPlaybackData();
     last_isPlaying = isPlaying;
-    return isPlaying;
+    bool value = isPlaying;
+    unlockPlaybackData();
+    return value;
 }
 
 static String selectArtworkUrl(JsonArray images)
@@ -296,6 +360,10 @@ boolean getCurrentlyPlaying()
 
     JsonObject item = currentPlaying["item"].as<JsonObject>();
     String trackTitle = item["name"].as<String>();
+    String trackId = item["id"].as<String>();
+    if (trackId.length() == 0)
+        trackId = item["uri"].as<String>();
+    uint64_t stateTimestamp = currentPlaying["timestamp"].as<uint64_t>();
     String itemType = currentPlaying["currently_playing_type"].as<String>();
     Serial.printf("Playback item: type='%s', name='%s'\n", itemType.c_str(), trackTitle.c_str());
     if (trackTitle.length() == 0)
@@ -376,6 +444,12 @@ boolean getCurrentlyPlaying()
         artworkUrl = selectArtworkUrl(images);
     }
 
+    bool trackIsPlaying = currentPlaying["is_playing"].as<bool>();
+    unsigned long sampleAt = millis();
+    lockPlaybackData();
+    bool playbackAnchorUnchanged = trackId.length() > 0 && stateTimestamp > 0 &&
+                                   trackId == playbackItemId && stateTimestamp == playbackTimestamp &&
+                                   trackDurationMs == durationMs && trackIsPlaying == isPlaying;
     if (artworkUrl != imageUrl)
     {
         downloaded_imageUrl = "";
@@ -384,13 +458,19 @@ boolean getCurrentlyPlaying()
     name = trackTitle;
     subtitle = trackSubtitle;
     progress = trackProgress;
-    progressMs = trackProgressMs;
-    durationMs = trackDurationMs;
-    isPlaying = currentPlaying["is_playing"].as<bool>();
-    progressSampleAt = millis();
+    if (!playbackAnchorUnchanged)
+    {
+        progressMs = trackProgressMs;
+        durationMs = trackDurationMs;
+        progressSampleAt = sampleAt;
+    }
+    isPlaying = trackIsPlaying;
+    playbackItemId = trackId;
+    playbackTimestamp = stateTimestamp;
     imageUrl = artworkUrl;
     hasData = true;
     playbackStatus = isPlaying ? PLAYBACK_PLAYING : PLAYBACK_PAUSED;
+    unlockPlaybackData();
     Serial.printf("Playback parsed: title='%s', subtitle='%s', progress=%.3f, playing=%s\n",
                   name.c_str(), subtitle.c_str(), progress, isPlaying ? "yes" : "no");
     return true;
@@ -442,13 +522,13 @@ static bool refreshAccessToken()
     return refreshed;
 }
 
-boolean downloadImage()
+static bool downloadImage(const String &artworkUrl)
 {
-    if (imageUrl.length() == 0)
+    if (artworkUrl.length() == 0)
         return false;
 
     HTTPClient http;
-    if (!http.begin(imageUrl))
+    if (!http.begin(artworkUrl))
     {
         Serial.println("Failed to start cover-art request");
         return false;
@@ -520,7 +600,7 @@ static void removeCoverImage()
     LittleFS.end();
 }
 
-void updateCurrentPlaying()
+static void updateCurrentPlayingStep()
 {
     if (spotifyState == REFRESHTOKEN)
     {
@@ -559,22 +639,33 @@ void updateCurrentPlaying()
         }
         break;
     case UPDATEIMAGE:
-        if (imageUrl != downloaded_imageUrl)
+    {
+        lockPlaybackData();
+        String artworkUrl = imageUrl;
+        bool needsDownload = artworkUrl != downloaded_imageUrl;
+        if (needsDownload)
         {
             downloaded_imageUrl = "";
-            if (imageUrl.length() > 0)
+            imageDownloadFailed = false;
+        }
+        unlockPlaybackData();
+
+        if (needsDownload)
+        {
+            if (artworkUrl.length() > 0)
             {
                 Serial.println("Downloading cover art");
-                if (downloadImage())
+                bool downloaded = downloadImage(artworkUrl);
+                lockPlaybackData();
+                if (imageUrl == artworkUrl)
                 {
-                    downloaded_imageUrl = imageUrl;
-                    imageDownloadFailed = false;
+                    if (downloaded)
+                        downloaded_imageUrl = artworkUrl;
+                    imageDownloadFailed = !downloaded;
                 }
-                else
-                {
-                    imageDownloadFailed = true;
+                unlockPlaybackData();
+                if (!downloaded)
                     removeCoverImage();
-                }
             }
             else
             {
@@ -584,6 +675,7 @@ void updateCurrentPlaying()
         spotifyState = WAIT;
         lastUpdate = millis();
         break;
+    }
     case WAIT:
     {
         bool trackEnded = isPlaying && durationMs > 0 &&
@@ -600,4 +692,39 @@ void updateCurrentPlaying()
     default:
         break;
     }
+}
+
+static void spotifyPlaybackWorker(void *)
+{
+    for (;;)
+    {
+        updateCurrentPlayingStep();
+        vTaskDelay(pdMS_TO_TICKS(10));
+    }
+}
+
+void updateCurrentPlaying()
+{
+    if (spotifyAuthStatus != SPOTIFY_AUTH_CONNECTED)
+        return;
+    if (playbackWorkerStarted || playbackWorkerStartAttempted)
+        return;
+    playbackWorkerStartAttempted = true;
+
+    playbackMutex = xSemaphoreCreateMutex();
+    if (!playbackMutex)
+    {
+        Serial.println("ERROR: Could not create Spotify playback mutex");
+        return;
+    }
+
+    if (xTaskCreatePinnedToCore(spotifyPlaybackWorker, "spotify-playback", 8192,
+                                nullptr, 1, nullptr, 0) != pdPASS)
+    {
+        Serial.println("ERROR: Could not start Spotify playback worker");
+        vSemaphoreDelete(playbackMutex);
+        playbackMutex = nullptr;
+        return;
+    }
+    playbackWorkerStarted = true;
 }
