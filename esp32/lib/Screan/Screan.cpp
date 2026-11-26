@@ -81,6 +81,14 @@ static int progressPixelWidth(float progress)
     return (int)(progress * progressBarWidth);
 }
 
+static uint16_t blend565(uint16_t base, uint16_t tint, uint8_t amount)
+{
+    uint16_t red = (((base >> 11) & 0x1F) * (255 - amount) + ((tint >> 11) & 0x1F) * amount + 127) / 255;
+    uint16_t green = (((base >> 5) & 0x3F) * (255 - amount) + ((tint >> 5) & 0x3F) * amount + 127) / 255;
+    uint16_t blue = ((base & 0x1F) * (255 - amount) + (tint & 0x1F) * amount + 127) / 255;
+    return (red << 11) | (green << 5) | blue;
+}
+
 static String fitWithEllipsis(String text, const GFXfont *font, int maxWidth)
 {
     const String suffix = "...";
@@ -137,8 +145,11 @@ enum ArtworkPlaceholderIcon
 
 static void drawArtworkPlaceholder(const char *label, ArtworkPlaceholderIcon icon = ARTWORK_ICON_DEFAULT)
 {
-    displayFillRect(coverX, coverY, coverSize, coverSize, primary);
-    displayFillRect(coverX + 3, coverY + 3, coverSize - 6, coverSize - 6, artworkBackground);
+    bool subdued = icon != ARTWORK_ICON_DEFAULT;
+    uint16_t borderColor = subdued ? blend565(background, 0x8410, 72) : primary;
+    uint16_t tileColor = subdued ? blend565(background, 0x8410, 24) : artworkBackground;
+    displayFillRect(coverX, coverY, coverSize, coverSize, borderColor);
+    displayFillRect(coverX + 3, coverY + 3, coverSize - 6, coverSize - 6, tileColor);
     // Every artwork-state symbol is centered on the cover tile.
     const int iconCenterX = coverX + coverSize / 2;
     const int iconCenterY = coverY + coverSize / 2;
@@ -205,7 +216,7 @@ static void drawArtworkPlaceholder(const char *label, ArtworkPlaceholderIcon ico
         }
         int labelX = coverX + 3 + max(0, (coverSize - 6 - labelWidth) / 2);
         displayText(displayLabel, labelX, iconCenterY + 16, DEFAULT_FONT,
-                    min(labelAreaWidth, labelWidth + 2), artworkBackground, muted);
+                    min(labelAreaWidth, labelWidth + 2), tileColor, muted);
     }
 }
 
