@@ -375,6 +375,12 @@ boolean getCurrentlyPlaying()
     }
 
     String trackSubtitle = "";
+    String albumTitle = "";
+    if (itemType == "track" && item.containsKey("album") && !item["album"].isNull())
+    {
+        JsonObject album = item["album"].as<JsonObject>();
+        albumTitle = album["name"].as<String>();
+    }
     if (item.containsKey("show") && !item["show"].isNull())
     {
         JsonObject show = item["show"].as<JsonObject>();
@@ -423,6 +429,10 @@ boolean getCurrentlyPlaying()
     {
         Serial.printf("Playback item '%s' has no artist/show subtitle fields\n", trackTitle.c_str());
     }
+
+    // Keep the album on its own display row beneath the track title, followed by the artist.
+    if (albumTitle.length() > 0)
+        trackSubtitle = albumTitle + "\n" + trackSubtitle;
 
     float trackDurationMs = item["duration_ms"].as<float>();
     float trackProgressMs = currentPlaying["progress_ms"].as<float>();
