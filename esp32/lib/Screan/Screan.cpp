@@ -9,6 +9,11 @@ static const uint16_t muted = ((0xA8 & 0xF8) << 8) | ((0xB8 & 0xFC) << 3) | (0xA
 static const uint16_t warning = TFT_YELLOW;
 static const uint16_t errorColor = TFT_RED;
 static const uint16_t artworkBackground = ((28 & 0xF8) << 8) | ((40 & 0xFC) << 3) | (32 >> 3);
+static const int coverX = 0;
+static const int coverY = 0;
+static const int coverSize = 200;
+static const int contentX = 212;
+static const int contentWidth = 316;
 
 static bool playbackScreenDrawn = false;
 static String drawnTitle = "";
@@ -23,11 +28,11 @@ static const int progressBarWidth = 474;
 static int drawnBarFillPixels = -1;
 static int displayedWifiState = -1;
 
-static void drawWifiIcon(bool connected)
+static void drawWifiDisconnectedIcon()
 {
     const int x = 505;
     const int y = 4;
-    const uint16_t arcColor = connected ? TFT_GREEN : muted;
+    const uint16_t arcColor = muted;
     displayFillRect(x, y, 24, 18, background);
 
     // Pixel-stepped arcs and a center dot form a compact Wi-Fi glyph.
@@ -42,24 +47,23 @@ static void drawWifiIcon(bool connected)
     displayFillRect(x + 7, y + 9, 2, 2, arcColor);
     displayFillRect(x + 15, y + 9, 2, 2, arcColor);
     displayFillRect(x + 10, y + 11, 4, 2, arcColor);
-    displayFillRect(x + 11, y + 15, 3, 3, connected ? TFT_GREEN : TFT_RED);
-
-    if (!connected)
-    {
-        displayFillRect(x + 5, y + 3, 3, 3, TFT_RED);
-        displayFillRect(x + 8, y + 6, 3, 3, TFT_RED);
-        displayFillRect(x + 11, y + 9, 3, 3, TFT_RED);
-        displayFillRect(x + 14, y + 12, 3, 3, TFT_RED);
-    }
+    displayFillRect(x + 11, y + 15, 3, 3, TFT_RED);
+    displayFillRect(x + 5, y + 3, 3, 3, TFT_RED);
+    displayFillRect(x + 8, y + 6, 3, 3, TFT_RED);
+    displayFillRect(x + 11, y + 9, 3, 3, TFT_RED);
+    displayFillRect(x + 14, y + 12, 3, 3, TFT_RED);
 }
 
 void updateWifiIndicator()
 {
     bool connected = getWiFiStatus();
-    int currentState = connected ? 1 : 0;
+    int currentState = connected ? 0 : 1;
     if (currentState == displayedWifiState)
         return;
-    drawWifiIcon(connected);
+    if (connected)
+        displayFillRect(505, 4, 24, 18, background);
+    else
+        drawWifiDisconnectedIcon();
     displayedWifiState = currentState;
 }
 
@@ -133,11 +137,11 @@ enum ArtworkPlaceholderIcon
 
 static void drawArtworkPlaceholder(const char *label, ArtworkPlaceholderIcon icon = ARTWORK_ICON_DEFAULT)
 {
-    displayFillRect(12, 23, 160, 160, primary);
-    displayFillRect(15, 26, 154, 154, artworkBackground);
-    // Every artwork-state symbol is centered on the 160 px cover tile.
-    const int iconCenterX = 92;
-    const int iconCenterY = 103;
+    displayFillRect(coverX, coverY, coverSize, coverSize, primary);
+    displayFillRect(coverX + 3, coverY + 3, coverSize - 6, coverSize - 6, artworkBackground);
+    // Every artwork-state symbol is centered on the cover tile.
+    const int iconCenterX = coverX + coverSize / 2;
+    const int iconCenterY = coverY + coverSize / 2;
     if (icon == ARTWORK_ICON_LOADING)
     {
         // Eight ticks around a centered spinner.
@@ -184,22 +188,24 @@ static void drawArtworkPlaceholder(const char *label, ArtworkPlaceholderIcon ico
     else
     {
         // A small music mark for non-artwork empty states.
-        displayFillRect(76, 70, 8, 21, primary);
-        displayFillRect(88, 61, 8, 30, primary);
-        displayFillRect(100, 75, 8, 16, primary);
-        displayFillRect(63, 98, 58, 2, muted);
+        displayFillRect(iconCenterX - 16, iconCenterY - 33, 8, 21, primary);
+        displayFillRect(iconCenterX - 4, iconCenterY - 42, 8, 30, primary);
+        displayFillRect(iconCenterX + 8, iconCenterY - 28, 8, 16, primary);
+        displayFillRect(iconCenterX - 29, iconCenterY - 5, 58, 2, muted);
     }
     if (label && label[0])
     {
         String displayLabel = label;
+        const int labelAreaWidth = coverSize - 10;
         int labelWidth = displayTextWidth(displayLabel, DEFAULT_FONT);
-        if (labelWidth > 150)
+        if (labelWidth > labelAreaWidth)
         {
-            displayLabel = fitWithEllipsis(displayLabel, DEFAULT_FONT, 150);
+            displayLabel = fitWithEllipsis(displayLabel, DEFAULT_FONT, labelAreaWidth);
             labelWidth = displayTextWidth(displayLabel, DEFAULT_FONT);
         }
-        int labelX = 15 + max(0, (154 - labelWidth) / 2);
-        displayText(displayLabel, labelX, 119, DEFAULT_FONT, min(154, labelWidth + 2), artworkBackground, muted);
+        int labelX = coverX + 3 + max(0, (coverSize - 6 - labelWidth) / 2);
+        displayText(displayLabel, labelX, iconCenterY + 16, DEFAULT_FONT,
+                    min(labelAreaWidth, labelWidth + 2), artworkBackground, muted);
     }
 }
 
@@ -218,24 +224,28 @@ static void drawArtwork(const String &artworkUrl, SpotifyPlaybackStatus status)
     }
     placeholderArtworkUrl = "";
     const char *label = "No cover art";
-    if (status == PLAYBACK_NOTHING) label = "No playback";
-    else if (status == PLAYBACK_ERROR) label = "Unavailable";
-    else if (status == PLAYBACK_LOADING) label = "Looking...";
+    if (status == PLAYBACK_NOTHING)
+        label = "No playback";
+    else if (status == PLAYBACK_ERROR)
+        label = "Unavailable";
+    else if (status == PLAYBACK_LOADING)
+        label = "Looking...";
     drawArtworkPlaceholder(label);
 }
 
 static void drawArtworkText(const String &title, const String &subtitle)
 {
-    displayFillRect(185, 8, 343, 198, background);
+    displayFillRect(contentX - 5, 8, 321, 198, background);
     String titleLines[3];
     String subtitleLines[3];
-    wrapAtSpaces(title, &FreeSans18pt7b, 326, titleLines, 3);
-    wrapAtSpaces(subtitle, DEFAULT_FONT, 326, subtitleLines, 3);
+    wrapAtSpaces(title, &FreeSans18pt7b, contentWidth, titleLines, 3);
+    wrapAtSpaces(subtitle, DEFAULT_FONT, contentWidth, subtitleLines, 3);
     int titleY = 22;
     for (int i = 0; i < 3; ++i)
     {
-        if (titleLines[i].length() == 0) continue;
-        uint16_t height = displayText(titleLines[i], 190, titleY, &FreeSans18pt7b, 326, background, white);
+        if (titleLines[i].length() == 0)
+            continue;
+        uint16_t height = displayText(titleLines[i], contentX, titleY, &FreeSans18pt7b, contentWidth, background, white);
         Serial.printf("Screen title line %d, y=%d, width=%u: '%s'\n", i + 1, titleY,
                       (unsigned)displayTextWidth(titleLines[i], &FreeSans18pt7b), titleLines[i].c_str());
         titleY += height + 4;
@@ -243,8 +253,9 @@ static void drawArtworkText(const String &title, const String &subtitle)
     int subtitleY = max(107, titleY + 6);
     for (int i = 0; i < 3; ++i)
     {
-        if (subtitleLines[i].length() == 0) continue;
-        uint16_t height = displayText(subtitleLines[i], 190, subtitleY, DEFAULT_FONT, 326, background, muted);
+        if (subtitleLines[i].length() == 0)
+            continue;
+        uint16_t height = displayText(subtitleLines[i], contentX, subtitleY, DEFAULT_FONT, contentWidth, background, muted);
         Serial.printf("Screen artist/show line %d, y=%d, width=%u: '%s'\n", i + 1, subtitleY,
                       (unsigned)displayTextWidth(subtitleLines[i], DEFAULT_FONT), subtitleLines[i].c_str());
         subtitleY += height + 2;
@@ -312,7 +323,7 @@ static void updateArtwork(const String &url, SpotifyPlaybackStatus status)
     }
     else if (artworkStatus == ARTWORK_READY && queuedArtworkUrl.length() == 0 && url != failedArtworkUrl)
     {
-        if (displayQueueCoverDecode(12, 23))
+        if (displayQueueCoverDecode(coverX, coverY))
         {
             queuedArtworkUrl = url;
             if (placeholderArtworkUrl != url)
@@ -350,7 +361,6 @@ static void drawPlaybackIndicator(bool isPlaying)
         displayFillRect(19, 215, 4, 15, iconColor);
         displayFillRect(27, 215, 4, 15, iconColor);
     }
-
 }
 
 static void drawProgressBar(float progress)
@@ -391,32 +401,23 @@ static void drawPlaybackScreen(SpotifyPlaybackStatus status, const String &title
     displayClear(background);
     invalidateWifiIndicator();
     bool hasPlayback = status == PLAYBACK_PLAYING || status == PLAYBACK_PAUSED;
-    if (!hasPlayback && status != PLAYBACK_LOADING)
-    {
-        displayFillRect(0, 0, 536, 5, primary);
-        displayText("TINYTRACKSPOTTER", 18, 10, DEFAULT_FONT, 500, background, primary);
-        const char *stateLabel = status == PLAYBACK_NOTHING ? "NO ACTIVE PLAYBACK" :
-                                 status == PLAYBACK_ERROR ? "PLAYBACK UNAVAILABLE" : "CHECKING PLAYBACK";
-        uint16_t stateColor = status == PLAYBACK_ERROR ? errorColor : muted;
-        displayText(stateLabel, 18, 35, DEFAULT_FONT, 500, background, stateColor);
-    }
     drawArtwork(artworkUrl, status);
 
     if (status == PLAYBACK_NOTHING)
     {
-        displayText("Nothing is playing", 190, 76, &FreeSans18pt7b, 326, background, white);
-        displayText("Start playback on Spotify.", 190, 120, DEFAULT_FONT, 326, background, muted);
+        displayText("Nothing is playing", contentX, 76, &FreeSans18pt7b, contentWidth, background, white);
+        displayText("Start playback on Spotify.", contentX, 120, DEFAULT_FONT, contentWidth, background, muted);
         return;
     }
     if (status == PLAYBACK_ERROR)
     {
-        displayText("Playback unavailable", 190, 76, &FreeSans18pt7b, 326, background, white);
-        displayText("Retrying automatically.", 190, 120, DEFAULT_FONT, 326, background, muted);
+        displayText("Playback unavailable", contentX, 76, &FreeSans18pt7b, contentWidth, background, white);
+        displayText("Retrying automatically.", contentX, 120, DEFAULT_FONT, contentWidth, background, muted);
         return;
     }
     if (status == PLAYBACK_LOADING)
     {
-        displayText("Looking for playback...", 190, 76, &FreeSans18pt7b, 326, background, white);
+        displayText("Looking for playback...", contentX, 76, &FreeSans18pt7b, contentWidth, background, white);
         return;
     }
 

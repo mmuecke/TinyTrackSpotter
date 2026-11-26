@@ -11,7 +11,7 @@
 
 bool pushImage(int16_t x, int16_t y, uint16_t w, uint16_t h, uint16_t *data);
 
-static const int COVER_SIZE = 160;
+static const int COVER_SIZE = 200;
 static const int DISPLAY_WIDTH = 536;
 static const int DISPLAY_HEIGHT = 240;
 static const int CLEAR_CHUNK_ROWS = 16;
@@ -241,7 +241,7 @@ DisplayJpgTaskResult displayProcessCoverDecode()
         return DISPLAY_JPG_PENDING;
     if (coverDecodeState == 2)
     {
-        // Keep every transfer inside the 160x160 artwork tile. A malformed or
+        // Keep every transfer inside the 180x180 artwork tile. A malformed or
         // unexpected JPEG size must never let the LCD address window reach text.
         if (coverWidth == 0 || coverHeight == 0 || coverWidth > COVER_SIZE || coverHeight > COVER_SIZE)
         {
