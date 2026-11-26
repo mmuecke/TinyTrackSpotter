@@ -182,8 +182,43 @@ void displayFillRect(int x, int y, int width, int height, uint16_t color)
     sprite.deleteSprite();
 }
 
+String normalizeDisplayText(const String &text)
+{
+    String normalized;
+    normalized.reserve(text.length() + 4);
+    for (size_t i = 0; i < text.length(); ++i)
+    {
+        uint8_t first = (uint8_t)text[i];
+        if (first == 0xC3 && i + 1 < text.length())
+        {
+            uint8_t second = (uint8_t)text[i + 1];
+            const char *replacement = nullptr;
+            switch (second)
+            {
+            case 0x84: replacement = "Ae"; break; // Ä
+            case 0x96: replacement = "Oe"; break; // Ö
+            case 0x9C: replacement = "Ue"; break; // Ü
+            case 0x9F: replacement = "ss"; break; // ß
+            case 0xA4: replacement = "ae"; break; // ä
+            case 0xB6: replacement = "oe"; break; // ö
+            case 0xBC: replacement = "ue"; break; // ü
+            default: break;
+            }
+            if (replacement)
+            {
+                normalized += replacement;
+                ++i;
+                continue;
+            }
+        }
+        normalized += (char)first;
+    }
+    return normalized;
+}
+
 uint16_t displayText(String text, int x, int y, const GFXfont *font, int width, uint16_t background, uint16_t color)
 {
+    text = normalizeDisplayText(text);
     uint16_t primary = ((0x1D & 0xF8) << 8) | ((0xB9 & 0xFC) << 3) | (0x54 >> 3);
     TFT_eSprite sprite = TFT_eSprite(&tft);
     sprite.setSwapBytes(1);
@@ -214,6 +249,7 @@ uint16_t displayText(String text, int x, int y, const GFXfont *font, int width, 
 
 uint16_t displayTextWidth(String text, const GFXfont *font)
 {
+    text = normalizeDisplayText(text);
     TFT_eSprite sprite = TFT_eSprite(&tft);
     sprite.setFreeFont(font);
     return sprite.textWidth(text);

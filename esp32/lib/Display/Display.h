@@ -23,6 +23,7 @@ uint16_t displayText(
     uint16_t background = TFT_BLACK,
     uint16_t color = TFT_WHITE);
 uint16_t displayTextWidth(String text, const GFXfont *font = DEFAULT_FONT);
+String normalizeDisplayText(const String &text);
 void displayPrintLine(String text);
 void displayPrint(String text);
 enum DisplayJpgTaskResult

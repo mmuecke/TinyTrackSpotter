@@ -100,7 +100,7 @@ static void wrapAtSpaces(const String &text, const GFXfont *font, int maxWidth, 
     for (int i = 0; i < maxLines; ++i)
         lines[i] = "";
 
-    String remaining = text;
+    String remaining = normalizeDisplayText(text);
     remaining.trim();
     for (int lineIndex = 0; lineIndex < maxLines && remaining.length() > 0; ++lineIndex)
     {
